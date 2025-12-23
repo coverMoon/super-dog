@@ -150,6 +150,7 @@ class TaskRegistry():
         if resume:
             # load previously trained model
             resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
+            #resume_path = "/home/windnotebook/PROJECT/RoboCon/Dog/HIMLoco/legged_gym/logs/rough_black_dog/Dec23_23-53-16_/model_280.pt"
             print(f"Loading model from: {resume_path}")
             runner.load(resume_path)
         return runner, train_cfg

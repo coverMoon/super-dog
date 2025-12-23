@@ -181,7 +181,7 @@ class BlackCfg(LeggedRobotCfg):
             lateral_vel_penalty = -1.0
             feet_spacing = -0.3
             foot_impact_vel = -0.0001
-            foot_clearance_by_phase = -0.5
+            foot_clearance_by_phase = -0.1
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
