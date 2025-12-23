@@ -11,10 +11,10 @@ class BlackCfg(LeggedRobotCfg):
         #     'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.82,  'RR_calf_joint': 1.5
         # }
         default_joint_angles = {
-            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.82,   'FL_calf_joint': -1.5,
-            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.82,  'FR_calf_joint': 1.5,
-            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.9,   'RL_calf_joint': -1.4,
-            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.9,  'RR_calf_joint': 1.4
+            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.82,   'FL_calf_joint': -1.3,
+            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.82,  'FR_calf_joint': 1.3,
+            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.82,   'RL_calf_joint': -1.3,
+            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.82,  'RR_calf_joint': 1.3
         }
 
     class control(LeggedRobotCfg.control):
@@ -65,7 +65,7 @@ class BlackCfg(LeggedRobotCfg):
         link_mass_range = [0.75, 1.25]
         
         randomize_friction = True
-        friction_range = [0.5, 1.5]
+        friction_range = [0.2, 1.5]
         
         randomize_restitution = False
         restitution_range = [0., 1.0]
@@ -146,35 +146,35 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.6
-        clearance_height_target = -0.37
+        clearance_height_target = -0.426
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.45
+        base_height_target = 0.476
         only_positive_rewards = False
         class scales:
             termination = -200.0
             tracking_lin_vel = 1.5
             tracking_ang_vel = 1.0
-            lin_vel_z = -2.0
+            lin_vel_z = -2.5
             ang_vel_xy = -0.1
-            orientation = -3.0
+            orientation = -5.0
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -1.0
+            base_height = -3.0
             foot_clearance = -0.1
             action_rate = -0.03
             smoothness = -0.01
             feet_air_time = 0.01
             collision = -0.0
             feet_stumble = -0.0
-            stand_still = -1.0
+            stand_still = -1.5
             torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 2.0
-            hip_pos = -0.1
-            all_joint_pos = -0.0001
+            hip_pos = -0.8
+            all_joint_pos = -0.001
             foot_slip = -0.8
             lateral_vel_penalty = -0.5
             feet_spacing = -0.1
