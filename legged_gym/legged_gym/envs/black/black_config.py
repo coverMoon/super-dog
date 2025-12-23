@@ -59,10 +59,10 @@ class BlackCfg(LeggedRobotCfg):
         payload_mass_range = [-2, 3]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.08, 0.08]
+        com_displacement_range = [-0.10, 0.10]
 
         randomize_link_mass = True
-        link_mass_range = [0.8, 1.2]
+        link_mass_range = [0.75, 1.25]
         
         randomize_friction = True
         friction_range = [0.2, 1.5]
@@ -71,7 +71,7 @@ class BlackCfg(LeggedRobotCfg):
         restitution_range = [0., 1.0]
         
         randomize_motor_strength = True
-        motor_strength_range = [0.8, 1.2]
+        motor_strength_range = [0.75, 1.25]
         
         randomize_kp = True
         kp_range = [0.7, 1.3]
@@ -91,12 +91,12 @@ class BlackCfg(LeggedRobotCfg):
         max_push_vel_xy = 1.0
 
         # [修改] 延迟设置
-        delay = False
+        delay = True
         # 延迟步数范围
-        lag_timesteps = 2 
+        lag_timesteps = 3 
         
     class noise:
-        add_noise = False
+        add_noise = True
         noise_level = 1.0 # scales other values
         class noise_scales:
             dof_pos = 0.02
@@ -147,25 +147,25 @@ class BlackCfg(LeggedRobotCfg):
         episode_length_s = 20 # episode length in seconds
 
     class rewards(LeggedRobotCfg.rewards):
-        cycle_time = 0.6
+        cycle_time = 0.8
         clearance_height_target = 0.05
         soft_dof_pos_limit = 0.9
         base_height_target = 0.435
         only_positive_rewards = False
         class scales:
             termination = -200.0
-            tracking_lin_vel = 1.5
-            tracking_ang_vel = 1.0
+            tracking_lin_vel = 1.7
+            tracking_ang_vel = 1.2
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -0.2
+            orientation = -2.5
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -1.0
+            base_height = -3.0
             #foot_clearance = -0.01
-            action_rate = -0.01
+            action_rate = -0.02
             smoothness = -0.01
-            feet_air_time = 0.01
+            feet_air_time = 0.03
             collision = -0.0
             feet_stumble = -0.0
             stand_still = -1.0
@@ -174,14 +174,14 @@ class BlackCfg(LeggedRobotCfg):
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-            trot = 1.0
+            trot = 2.0
             hip_pos = -0.5
             all_joint_pos = -0.001
             foot_slip = -0.3
             lateral_vel_penalty = -1.0
             feet_spacing = -0.3
-            foot_impact_vel = -0.0001
-            foot_clearance_by_phase = -1.0
+            foot_impact_vel = -0.1
+            foot_clearance_by_phase = -2.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
