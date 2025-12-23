@@ -176,7 +176,7 @@ class BlackCfg(LeggedRobotCfg):
             all_joint_pos = -0.1
             foot_slip = -0.8
             lateral_vel_penalty = -1.0
-            feet_spacing = -0.1
+            feet_spacing = -0.3
             foot_impact_vel = -0.01
             foot_clearance_by_phase = -2.0
 
@@ -200,5 +200,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 1000
+        max_iterations = 800
         
