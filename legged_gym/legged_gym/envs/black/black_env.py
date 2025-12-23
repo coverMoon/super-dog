@@ -197,9 +197,9 @@ class BlackEnv(LeggedRobot):
 
         # 更新历史缓存 (滑动窗口)
         self.obs_buf = torch.cat((current_obs[:, :self.num_one_step_obs], self.obs_buf[:, :-self.num_one_step_obs]), dim=-1)
-        self.privileged_obs_buf = torch.cat((current_obs[:, :self.num_one_step_privileged_obs], 
-                                             stance_mask, # [2] 目标相位掩码
+        self.privileged_obs_buf = torch.cat((stance_mask, # [2] 目标相位掩码
                                              contact_mask, # [4] 真实触地掩码
+                                             current_obs[:, :self.num_one_step_privileged_obs], 
                                              self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
 
                                              dim=-1)
@@ -243,9 +243,9 @@ class BlackEnv(LeggedRobot):
 
         # 返回特权观测
         # 这里只返回 termination_ids 对应的部分
-        return torch.cat((current_obs[:, :self.num_one_step_privileged_obs], 
-                          stance_mask, # [2] 目标相位掩码
+        return torch.cat((stance_mask, # [2] 目标相位掩码
                           contact_mask, # [4] 真实触地掩码
+                          current_obs[:, :self.num_one_step_privileged_obs], 
                           self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
                           dim=-1)[env_ids]
 
