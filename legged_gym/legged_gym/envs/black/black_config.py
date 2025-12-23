@@ -133,10 +133,13 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 4096
+        num_envs = 64
         num_one_step_observations = 47
         num_observations = num_one_step_observations * 6
-        num_one_step_privileged_obs = 47 + 3 + 3 + 187 # additional: base_lin_vel, external_forces, scan_dots
+
+        # additional: stance_mask, contact_mask, base_lin_vel, external_forces, scan_dots
+        num_one_step_privileged_obs = 47 + 3 + 3 + 3 + 3 + 187
+
         num_privileged_obs = num_one_step_privileged_obs * 1 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         env_spacing = 3.  # not used with heightfields/trimeshes 
@@ -200,5 +203,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 800
+        max_iterations = 600
         

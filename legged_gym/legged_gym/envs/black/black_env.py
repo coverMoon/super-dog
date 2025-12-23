@@ -164,6 +164,9 @@ class BlackEnv(LeggedRobot):
         sin_pos = torch.sin(2 * torch.pi * phase).unsqueeze(1)
         cos_pos = torch.cos(2 * torch.pi * phase).unsqueeze(1)
 
+        stance_mask = self._get_gait_phase()    # 理想的触地时序
+        contact_mask = self.contact_forces[:, self.feet_indices, 2] > 5.    # 真实的触地状态
+
         # 构建基础观测向量
         base_obs = torch.cat((   
                                     self.commands[:, :3] * self.commands_scale,
@@ -194,7 +197,12 @@ class BlackEnv(LeggedRobot):
 
         # 更新历史缓存 (滑动窗口)
         self.obs_buf = torch.cat((current_obs[:, :self.num_one_step_obs], self.obs_buf[:, :-self.num_one_step_obs]), dim=-1)
-        self.privileged_obs_buf = torch.cat((current_obs[:, :self.num_one_step_privileged_obs], self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), dim=-1)
+        self.privileged_obs_buf = torch.cat((current_obs[:, :self.num_one_step_privileged_obs], 
+                                             stance_mask, # [2] 目标相位掩码
+                                             contact_mask, # [4] 真实触地掩码
+                                             self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
+
+                                             dim=-1)
     
     def compute_termination_observations(self, env_ids):
         """ Computes observations for terminated environments (Critic needs this)
@@ -203,6 +211,9 @@ class BlackEnv(LeggedRobot):
         phase = self._get_phase()
         sin_pos = torch.sin(2 * torch.pi * phase).unsqueeze(1)
         cos_pos = torch.cos(2 * torch.pi * phase).unsqueeze(1)
+
+        stance_mask = self._get_gait_phase()    # 理想的触地时序
+        contact_mask = self.contact_forces[:, self.feet_indices, 2] > 5.    # 真实的触地状态
 
         # 构建基础物理观测
         base_obs = torch.cat((      self.commands[:, :3] * self.commands_scale,
@@ -230,10 +241,13 @@ class BlackEnv(LeggedRobot):
             heights += (2 * torch.rand_like(heights) - 1) * self.noise_scale_vec[(9 + 3 * self.num_actions):(9 + 3 * self.num_actions+187)]
             current_obs = torch.cat((current_obs, heights), dim=-1)
 
-        # 返回特权观测值
-        # 确保 self.num_one_step_privileged_obs 已经是 240
+        # 返回特权观测
         # 这里只返回 termination_ids 对应的部分
-        return torch.cat((current_obs[:, :self.num_one_step_privileged_obs], self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), dim=-1)[env_ids]
+        return torch.cat((current_obs[:, :self.num_one_step_privileged_obs], 
+                          stance_mask, # [2] 目标相位掩码
+                          contact_mask, # [4] 真实触地掩码
+                          self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
+                          dim=-1)[env_ids]
 
     # ----------------------------------------------------------------------
     # 自定义奖励函数区域
@@ -422,11 +436,10 @@ class BlackEnv(LeggedRobot):
     def _reward_foot_clearance_by_phase(self):
         """
         [基于相位的动态抬腿奖励]
-        目标：支撑相时目标高度为0，摆动相时目标高度跟随正弦波。
+        目标：支撑相时目标高度为0 (允许2cm误差)，摆动相时目标高度跟随半正弦波。
         解决定值高度导致的支撑相冲突问题。
         """
-        # 获取当前脚的高度 (相对于地面)
-        # shape: (num_envs, 4)
+        # 1. 获取当前脚的高度 (相对于地面)
         feet_height = self._get_feet_heights() 
 
         # 2. 计算每个脚的相位
@@ -435,31 +448,37 @@ class BlackEnv(LeggedRobot):
         
         # 针对 Trot 步态设置相位偏移
         # 0(FL)和3(RR)是一组，1(FR)和2(RL)是一组，相差 0.5 周期
-        # shape: (4,) -> (1, 4)
         offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
         
         # 得到每只脚的独立相位 [0, 1)
         feet_phases = (phase + offsets) % 1.0
 
-        # 3. 生成动态目标高度 (Target Height)
-        # 使用 sin(2*pi*phase) 
-
+        # 3. 计算正弦波值
+        # sin > 0 为支撑相 (Stance)，sin < 0 为摆动相 (Swing)
         sin_val = torch.sin(2 * torch.pi * feet_phases)
 
-        # 设定目标：
-        # 如果 sin_val > 0 (假设这是支撑相区间): 目标高度 = 0
-        # 如果 sin_val < 0 (假设这是摆动相区间): 目标高度 = 设定值 * |sin_val|
-        # 这样会形成一个半正弦波的抬腿轨迹
-        target_height = torch.where(sin_val > 0, 
-                                  torch.zeros_like(sin_val), 
-                                  -sin_val * self.cfg.rewards.clearance_height_target)
-        
-        # 计算误差
-        # 我们希望机器人严格追踪这个轨迹
-        error = torch.square(feet_height - target_height)
-
-        # 只在有水平移动指令时才生效 (静止时不需要抬腿)
+        # 4. 移动指令掩码
+        # 只有在有水平移动指令时才生效 (静止时不强迫抬腿)
         move_cmd = torch.norm(self.commands[:, :2], dim=1) > 0.1
+
+        # 5. 分阶段计算惩罚
         
+        # [A] 支撑相 (Stance): 
+        # 目标是贴地。只要高度 < 0.02m (2cm) 就不惩罚。
+        # 允许脚轻微陷入地面 (负值) 或离地很近，避免与物理引擎的接触解算打架。
+        # 逻辑：只有当 feet_height > 0.02 时，(feet_height - 0.02) 才是正数，才会有平方惩罚。
+        stance_penalty = torch.square(torch.clip(feet_height - 0.02, min=0.)) 
+        
+        # [B] 摆动相 (Swing): 
+        # 严格追踪半正弦波轨迹。
+        # sin_val 在此处为负数 (-1 ~ 0)，所以 -sin_val 为正数 (0 ~ 1)
+        swing_target = -sin_val * self.cfg.rewards.clearance_height_target
+        swing_penalty = torch.square(feet_height - swing_target)
+        
+        # 6. 组合惩罚
+        # 根据相位选择使用哪一种惩罚
+        error = torch.where(sin_val > 0, stance_penalty, swing_penalty)
+        
+        # 7. 求和并应用移动掩码
         return torch.sum(error, dim=1) * move_cmd.float()
 
