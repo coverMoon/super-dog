@@ -133,7 +133,7 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 64
+        num_envs = 4096
         num_one_step_observations = 47
         num_observations = num_one_step_observations * 6
 
@@ -153,9 +153,9 @@ class BlackCfg(LeggedRobotCfg):
         base_height_target = 0.435
         only_positive_rewards = False
         class scales:
-            termination = -500.0
-            tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.5
+            termination = -200.0
+            tracking_lin_vel = 1.5
+            tracking_ang_vel = 1.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             orientation = -0.2
@@ -180,8 +180,8 @@ class BlackCfg(LeggedRobotCfg):
             foot_slip = -0.3
             lateral_vel_penalty = -1.0
             feet_spacing = -0.3
-            #foot_impact_vel = -0.0001
-            #foot_clearance_by_phase = -0.1
+            foot_impact_vel = -0.0001
+            foot_clearance_by_phase = -1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
