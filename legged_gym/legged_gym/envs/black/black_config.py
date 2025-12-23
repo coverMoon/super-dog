@@ -11,10 +11,10 @@ class BlackCfg(LeggedRobotCfg):
         #     'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.82,  'RR_calf_joint': 1.5
         # }
         default_joint_angles = {
-            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.82,   'FL_calf_joint': -1.3,
-            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.82,  'FR_calf_joint': 1.3,
-            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.82,   'RL_calf_joint': -1.3,
-            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.82,  'RR_calf_joint': 1.3
+            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
+            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
+            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527,
+            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527
         }
 
     class control(LeggedRobotCfg.control):
@@ -92,9 +92,8 @@ class BlackCfg(LeggedRobotCfg):
 
         # [修改] 延迟设置
         delay = True
-        # 延迟步数范围：0 到 3 步 (每步 20ms，即 0ms-60ms 延迟)
-        # 必须小于等于 action_queue 的长度
-        lag_timesteps = 3 
+        # 延迟步数范围
+        lag_timesteps = 2 
         
     class noise:
         add_noise = True
@@ -146,25 +145,24 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.6
-        clearance_height_target = -0.446
+        clearance_height_target = 0.05
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.476
+        base_height_target = 0.435
         only_positive_rewards = False
-        max_contact_force = 100.
         class scales:
             termination = -200.0
-            tracking_lin_vel = 1.7
+            tracking_lin_vel = 2.0
             tracking_ang_vel = 1.2
-            lin_vel_z = -2.5
+            lin_vel_z = -2.0
             ang_vel_xy = -0.1
             orientation = -5.0
             dof_acc = -2.5e-6
             joint_power = -2e-5
-            base_height = -5.0
-            foot_clearance = -0.01
+            base_height = -8.0
+            #foot_clearance = -0.01
             action_rate = -0.05
             smoothness = -0.01
-            feet_air_time = 0.01
+            feet_air_time = 0.1
             collision = -0.0
             feet_stumble = -0.0
             stand_still = -1.5
@@ -174,12 +172,13 @@ class BlackCfg(LeggedRobotCfg):
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 2.0
-            hip_pos = -0.3
-            all_joint_pos = -0.001
+            hip_pos = -0.5
+            all_joint_pos = -0.1
             foot_slip = -0.8
             lateral_vel_penalty = -1.0
             feet_spacing = -0.1
-            foot_impact_vel = -1.0
+            foot_impact_vel = -0.01
+            foot_clearance_by_phase = -2.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:

@@ -418,4 +418,48 @@ class BlackEnv(LeggedRobot):
         # 惩罚：只有在接触地面时，脚的 Z 速度才会被惩罚
         # 使用平方形式惩罚大的冲击
         return torch.sum(contact * torch.square(foot_vel_z), dim=1)
+    
+    def _reward_foot_clearance_by_phase(self):
+        """
+        [基于相位的动态抬腿奖励]
+        目标：支撑相时目标高度为0，摆动相时目标高度跟随正弦波。
+        解决定值高度导致的支撑相冲突问题。
+        """
+        # 获取当前脚的高度 (相对于地面)
+        # shape: (num_envs, 4)
+        feet_height = self._get_feet_heights() 
+
+        # 2. 计算每个脚的相位
+        # 基础相位 (num_envs, 1)
+        phase = self._get_phase().unsqueeze(1)
+        
+        # 针对 Trot 步态设置相位偏移
+        # 0(FL)和3(RR)是一组，1(FR)和2(RL)是一组，相差 0.5 周期
+        # shape: (4,) -> (1, 4)
+        offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
+        
+        # 得到每只脚的独立相位 [0, 1)
+        feet_phases = (phase + offsets) % 1.0
+
+        # 3. 生成动态目标高度 (Target Height)
+        # 使用 sin(2*pi*phase) 
+
+        sin_val = torch.sin(2 * torch.pi * feet_phases)
+
+        # 设定目标：
+        # 如果 sin_val > 0 (假设这是支撑相区间): 目标高度 = 0
+        # 如果 sin_val < 0 (假设这是摆动相区间): 目标高度 = 设定值 * |sin_val|
+        # 这样会形成一个半正弦波的抬腿轨迹
+        target_height = torch.where(sin_val > 0, 
+                                  torch.zeros_like(sin_val), 
+                                  -sin_val * self.cfg.rewards.clearance_height_target)
+        
+        # 计算误差
+        # 我们希望机器人严格追踪这个轨迹
+        error = torch.square(feet_height - target_height)
+
+        # 只在有水平移动指令时才生效 (静止时不需要抬腿)
+        move_cmd = torch.norm(self.commands[:, :2], dim=1) > 0.1
+        
+        return torch.sum(error, dim=1) * move_cmd.float()
 
