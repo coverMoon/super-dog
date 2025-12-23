@@ -146,21 +146,22 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.6
-        clearance_height_target = -0.426
+        clearance_height_target = -0.446
         soft_dof_pos_limit = 0.9
         base_height_target = 0.476
         only_positive_rewards = False
+        max_contact_force = 100.
         class scales:
             termination = -200.0
-            tracking_lin_vel = 1.5
-            tracking_ang_vel = 1.0
+            tracking_lin_vel = 1.7
+            tracking_ang_vel = 1.2
             lin_vel_z = -2.5
             ang_vel_xy = -0.1
             orientation = -5.0
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -3.0
-            foot_clearance = -0.1
+            base_height = -5.0
+            foot_clearance = -0.01
             action_rate = -0.03
             smoothness = -0.01
             feet_air_time = 0.01
@@ -172,16 +173,18 @@ class BlackCfg(LeggedRobotCfg):
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
+            feet_contact_forces = -3.0
             trot = 2.0
-            hip_pos = -0.8
+            hip_pos = -0.3
             all_joint_pos = -0.001
             foot_slip = -0.8
-            lateral_vel_penalty = -0.5
+            lateral_vel_penalty = -1.0
             feet_spacing = -0.1
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
+
     class runner(LeggedRobotCfgPPO.runner):
         run_name = ''
         experiment_name = 'rough_black_dog'
