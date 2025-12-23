@@ -59,10 +59,10 @@ class BlackCfg(LeggedRobotCfg):
         payload_mass_range = [-2, 3]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.12, 0.12]
+        com_displacement_range = [-0.08, 0.08]
 
         randomize_link_mass = True
-        link_mass_range = [0.75, 1.25]
+        link_mass_range = [0.8, 1.2]
         
         randomize_friction = True
         friction_range = [0.2, 1.5]
@@ -71,7 +71,7 @@ class BlackCfg(LeggedRobotCfg):
         restitution_range = [0., 1.0]
         
         randomize_motor_strength = True
-        motor_strength_range = [0.75, 1.25]
+        motor_strength_range = [0.8, 1.2]
         
         randomize_kp = True
         kp_range = [0.7, 1.3]
@@ -87,8 +87,8 @@ class BlackCfg(LeggedRobotCfg):
         disturbance_interval = 8
         
         push_robots = True
-        push_interval_s = 20
-        max_push_vel_xy = 1.5
+        push_interval_s = 16
+        max_push_vel_xy = 1.0
 
         # [修改] 延迟设置
         delay = True
@@ -129,7 +129,7 @@ class BlackCfg(LeggedRobotCfg):
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，断桥，陷坑]
-        terrain_proportions = [0.1, 0.1, 0.3, 0.3, 0.1, 0.1, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.1, 0.4, 0.3, 0.1, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
@@ -182,6 +182,16 @@ class BlackCfg(LeggedRobotCfg):
             feet_spacing = -0.1
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
+    class policy:
+        init_noise_std = 1.0
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [512, 256, 128]
+        activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
+        # only for 'ActorCriticRecurrent':
+        # rnn_type = 'lstm'
+        # rnn_hidden_size = 512
+        # rnn_num_layers = 1
+
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
 
