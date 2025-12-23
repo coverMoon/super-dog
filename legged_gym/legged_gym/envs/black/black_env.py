@@ -407,4 +407,15 @@ class BlackEnv(LeggedRobot):
     
         # 3. 返回动态惩罚
         return penalty * level_scale
+    
+    def _reward_foot_impact_vel(self):
+        # 判断哪些脚接触地面 (力 > 1N)
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        
+        # 获取脚的 Z 轴速度 (绝对值 或 平方)
+        foot_vel_z = self.feet_vel[:, :, 2]
+        
+        # 惩罚：只有在接触地面时，脚的 Z 速度才会被惩罚
+        # 使用平方形式惩罚大的冲击
+        return torch.sum(contact * torch.square(foot_vel_z), dim=1)
 
