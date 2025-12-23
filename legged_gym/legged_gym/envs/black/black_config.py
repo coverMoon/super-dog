@@ -201,5 +201,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 600
+        max_iterations = 1000
         
