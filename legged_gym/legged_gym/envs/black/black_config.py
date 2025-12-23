@@ -153,7 +153,7 @@ class BlackCfg(LeggedRobotCfg):
         base_height_target = 0.435
         only_positive_rewards = False
         class scales:
-            termination = -200.0
+            termination = -500.0
             tracking_lin_vel = 1.5
             tracking_ang_vel = 1.0
             lin_vel_z = -2.0
