@@ -155,11 +155,11 @@ class BlackCfg(LeggedRobotCfg):
         class scales:
             termination = -200.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.2
-            lin_vel_z = -2.0
+            tracking_ang_vel = 1.5
+            lin_vel_z = -1.0
             ang_vel_xy = -0.1
             orientation = -5.0
-            dof_acc = -2.5e-6
+            dof_acc = -2.5e-7
             joint_power = -2e-5
             base_height = -8.0
             #foot_clearance = -0.01
