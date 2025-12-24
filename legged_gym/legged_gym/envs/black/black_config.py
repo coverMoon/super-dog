@@ -91,12 +91,12 @@ class BlackCfg(LeggedRobotCfg):
         max_push_vel_xy = 1.0
 
         # [修改] 延迟设置
-        delay = False
+        delay = True
         # 延迟步数范围
         lag_timesteps = 2 
         
     class noise:
-        add_noise = False
+        add_noise = True
         noise_level = 1.0 # scales other values
         class noise_scales:
             dof_pos = 0.02
@@ -203,5 +203,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 400
+        max_iterations = 600
         
