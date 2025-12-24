@@ -22,6 +22,7 @@ class BlackEnv(LeggedRobot):
         # 重新初始化动作队列，长度根据 Config 决定
         hist_len = self.cfg.domain_rand.lag_timesteps + 1 # +1 是为了安全冗余
         self.action_queue = torch.zeros(self.num_envs, hist_len, self.num_actions, device=self.device, requires_grad=False)
+        self.lag_buffer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -40,17 +41,11 @@ class BlackEnv(LeggedRobot):
 
         # 2. 决定使用哪个延迟动作
         if self.cfg.domain_rand.delay:
-            # 不再硬编码 3，而是从 config 读取最大滞后步数
-            # lag_timesteps 在 config 中定义 (例如 3)
-            max_lag = self.cfg.domain_rand.lag_timesteps 
+            # 使用 reset 时生成的固定延时，而不是每帧随机
+            latency_indices = self.lag_buffer
 
-            # 生成随机索引
-            latency_indices = torch.randint(0, max_lag, (self.num_envs, ), device=self.device)
-            
-            # 防止索引越界 (因为 buffer 长度是在 _init_buffers 定义的)
-            # 确保 latency_indices 不超过 action_queue 的实际长度
+            # 安全裁剪
             latency_indices = torch.clip(latency_indices, max=self.action_queue.size(1)-1)
-
             delayed_actions = self.action_queue[torch.arange(self.num_envs, device=self.device), latency_indices]
         else:
             delayed_actions = self.actions
@@ -84,6 +79,13 @@ class BlackEnv(LeggedRobot):
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, termination_ids, termination_priveleged_obs
 
+    def reset_idx(self, env_ids):
+        super().reset_idx(env_ids) # 调用父类 reset
+
+        # 为重置的环境随机生成一个新的固定延迟（0 到 max_lag-1）
+        if self.cfg.domain_rand.delay:
+            max_lag = self.cfg.domain_rand.lag_timesteps
+            self.lag_buffer[env_ids] = torch.randint(0, max_lag, (len(env_ids),), device=self.device)
 
     def post_physics_step(self):
         """ 物理步后刷新状态 """
@@ -120,7 +122,7 @@ class BlackEnv(LeggedRobot):
         stance_mask[:, 1] = sin_pos < 0
         
         # 双支撑相：当 sin 值接近 0 时，两腿都应该着地
-        stance_mask[torch.abs(sin_pos) < 0.1] = 1
+        # stance_mask[torch.abs(sin_pos) < 0.1] = 1
 
         return stance_mask
     

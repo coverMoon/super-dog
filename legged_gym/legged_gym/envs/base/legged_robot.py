@@ -1253,7 +1253,18 @@ class LeggedRobot(BaseTask):
         
     def _reward_stand_still(self):
         # Penalize motion at zero commands
-        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        #return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        
+        # 判断是否处于“静止命令”状态
+        # 如果水平移动指令 < 0.1 且 转向指令 < 0.1，则认为是静止
+        is_still = torch.norm(self.commands[:, :2], dim=1) < 0.1
+        
+        # 计算惩罚：只惩罚关节速度
+        # 只要关节在动 (dof_vel不为0) 就惩罚
+        velocity_penalty = torch.sum(torch.abs(self.dof_vel), dim=1)
+        
+        # 应用掩码：只有在应该静止的时候，才施加这个惩罚
+        return velocity_penalty * is_still
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces

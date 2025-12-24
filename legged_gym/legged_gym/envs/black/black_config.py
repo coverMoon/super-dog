@@ -3,7 +3,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class BlackCfg(LeggedRobotCfg):
     class init_state(LeggedRobotCfg.init_state):
         # 1. 初始姿态
-        pos = [0.0, 0.0, 0.50] 
+        pos = [0.0, 0.0, 0.45] 
         # default_joint_angles = {
         #     'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.82,   'FL_calf_joint': -1.5,
         #     'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.82,  'FR_calf_joint': 1.5,
@@ -164,12 +164,12 @@ class BlackCfg(LeggedRobotCfg):
             base_height = -3.0
             #foot_clearance = -0.01
             action_rate = -0.02
-            smoothness = -0.01
+            smoothness = -0.015
             feet_air_time = 0.03
             collision = -0.0
             feet_stumble = -0.0
             stand_still = -1.0
-            torques = -0.0
+            torques = -2e-5
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
@@ -203,5 +203,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 600
+        max_iterations = 1000
         
