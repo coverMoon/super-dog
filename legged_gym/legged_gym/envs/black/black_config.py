@@ -13,8 +13,8 @@ class BlackCfg(LeggedRobotCfg):
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
-            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527,
-            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527
+            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.9,   'RL_calf_joint': -1.527,
+            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.9,  'RR_calf_joint': 1.527
         }
 
     class control(LeggedRobotCfg.control):
@@ -150,7 +150,7 @@ class BlackCfg(LeggedRobotCfg):
         cycle_time = 0.8
         clearance_height_target = 0.05
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.435
+        base_height_target = 0.44
         only_positive_rewards = False
         class scales:
             termination = -200.0
