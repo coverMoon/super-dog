@@ -55,6 +55,20 @@ class BlackCfg(LeggedRobotCfg):
         privileged_contacts_on = ["base", "thigh", "calf"]
         self_collisions = 1 # 1=disable
 
+    class commands:
+        curriculum = True
+        max_curriculum = 3.0
+        num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        resampling_time = 10. # time before command are changed[s]
+        heading_command = True # if true: compute ang vel command from heading error
+        class ranges:
+            lin_vel_x = [-1.0, 1.0] # min max [m/s]
+            lin_vel_y = [0.1, 0.1]   # min max [m/s]
+            # lin_vel_y = [1.0, 1.0]   # min max [m/s]
+            ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
+            # ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
+            heading = [-3.14, 3.14]
+
     class domain_rand:
         randomize_payload_mass = True
         payload_mass_range = [-2, 3]
@@ -159,30 +173,30 @@ class BlackCfg(LeggedRobotCfg):
             tracking_ang_vel = 1.2
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -2.5
+            orientation = -0.001
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -1.0
+            base_height = -0.1
             #foot_clearance = -0.01
             action_rate = -0.02
             smoothness = -0.01
             feet_air_time = 0.0
             collision = -0.0
             feet_stumble = -2.0
-            stand_still = -0.1
+            stand_still = -2.0
             torques = -2e-5
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-            trot = 0.1
-            hip_pos = -0.01
+            trot = 0.001
+            hip_pos = -0.5
             all_joint_pos = -0.001
             foot_slip = -0.3
             lateral_vel_penalty = -1.0
             feet_spacing = -0.1
-            foot_impact_vel = -0.1
-            foot_clearance_by_phase = -0.1
+            foot_impact_vel = -0.3
+            foot_clearance_by_phase = -0.01
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
