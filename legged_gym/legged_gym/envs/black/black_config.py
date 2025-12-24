@@ -1,3 +1,4 @@
+from fcntl import F_SETFL
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class BlackCfg(LeggedRobotCfg):
@@ -107,7 +108,7 @@ class BlackCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -147,10 +148,10 @@ class BlackCfg(LeggedRobotCfg):
         episode_length_s = 20 # episode length in seconds
 
     class rewards(LeggedRobotCfg.rewards):
-        cycle_time = 0.8
-        clearance_height_target = 0.05
+        cycle_time = 0.6
+        clearance_height_target = 0.08
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.44
+        base_height_target = 0.435
         only_positive_rewards = False
         class scales:
             termination = -200.0
@@ -161,27 +162,27 @@ class BlackCfg(LeggedRobotCfg):
             orientation = -2.5
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -3.0
+            base_height = -1.0
             #foot_clearance = -0.01
             action_rate = -0.02
-            smoothness = -0.015
-            feet_air_time = 0.03
+            smoothness = -0.01
+            feet_air_time = 0.0
             collision = -0.0
-            feet_stumble = -0.0
-            stand_still = -1.0
+            feet_stumble = -2.0
+            stand_still = -0.1
             torques = -2e-5
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-            trot = 2.0
-            hip_pos = -0.5
+            trot = 0.1
+            hip_pos = -0.01
             all_joint_pos = -0.001
             foot_slip = -0.3
             lateral_vel_penalty = -1.0
-            feet_spacing = -0.3
+            feet_spacing = -0.1
             foot_impact_vel = -0.1
-            foot_clearance_by_phase = -2.0
+            foot_clearance_by_phase = -0.1
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -203,5 +204,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 600
+        max_iterations = 1300
         
