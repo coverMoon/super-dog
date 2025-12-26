@@ -488,5 +488,5 @@ class BlackEnv(LeggedRobot):
     
     def _reward_roll_orientation(self):
         """ 惩罚 roll 轴倾角"""
-        return torch.sum(torch.square(self.projected_gravity[:, 1:2]), dim=1)
+        return torch.sum(torch.abs(self.projected_gravity[:, 1:2]), dim=1)
 

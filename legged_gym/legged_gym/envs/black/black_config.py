@@ -63,10 +63,10 @@ class BlackCfg(LeggedRobotCfg):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
-            lin_vel_y = [0.1, 0.1]   # min max [m/s]
-            # lin_vel_y = [-1.0, 1.0]   # min max [m/s]
-            ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
-            # ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
+           # lin_vel_y = [0.1, 0.1]   # min max [m/s]
+            lin_vel_y = [-1.0, 1.0]   # min max [m/s]
+            #ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
+            ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
             heading = [-3.14, 3.14]
             # lin_vel_x = [0.0, 0.0] # min max [m/s]
             # lin_vel_y = [-0.0, 0.0]   # min max [m/s]
@@ -175,7 +175,7 @@ class BlackCfg(LeggedRobotCfg):
             termination = -0.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
-            lin_vel_z = -1.5
+            lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.2
             dof_acc = -2.5e-7
@@ -188,19 +188,19 @@ class BlackCfg(LeggedRobotCfg):
             collision = -0.0
             feet_stumble = -1.0
             stand_still = -0.05
-            torques = -1e-8
+            torques = 0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             # trot = 2.0
-            hip_pos = -0.5
+            hip_pos = -0.6
             all_joint_pos = -0.001
             foot_slip = -0.3
             lateral_vel_penalty = -2.0
             feet_spacing = -0.1
             foot_impact_vel = -0.1
-            roll_orientation = -3.0
+            roll_orientation = -10.0
             #foot_clearance_by_phase = -1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
@@ -223,5 +223,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 1000
+        max_iterations = 2000
         
