@@ -64,10 +64,14 @@ class BlackCfg(LeggedRobotCfg):
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             lin_vel_y = [0.1, 0.1]   # min max [m/s]
-            # lin_vel_y = [1.0, 1.0]   # min max [m/s]
+            # lin_vel_y = [-1.0, 1.0]   # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
             # ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
             heading = [-3.14, 3.14]
+            # lin_vel_x = [0.0, 0.0] # min max [m/s]
+            # lin_vel_y = [-0.0, 0.0]   # min max [m/s]
+            # ang_vel_yaw = [0.0, 0.0]    # min max [rad/s]
+            # heading = [0.0, 0.0]
 
     class domain_rand:
         randomize_payload_mass = True
@@ -148,12 +152,12 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 4096
-        num_one_step_observations = 47
+        num_envs = 2800
+        num_one_step_observations = 45
         num_observations = num_one_step_observations * 6
 
-        # additional: stance_mask, contact_mask, base_lin_vel, external_forces, scan_dots
-        num_one_step_privileged_obs = 47 + 3 + 3 + 3 + 3 + 187
+        # additional: (stance_mask, contact_mask), base_lin_vel, external_forces, scan_dots
+        num_one_step_privileged_obs = 45 + 3 + 3 + 187
 
         num_privileged_obs = num_one_step_privileged_obs * 1 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
@@ -162,41 +166,42 @@ class BlackCfg(LeggedRobotCfg):
         episode_length_s = 20 # episode length in seconds
 
     class rewards(LeggedRobotCfg.rewards):
-        cycle_time = 0.6
+        cycle_time = 0.8
         clearance_height_target = 0.08
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.435
+        base_height_target = 0.41
         only_positive_rewards = False
         class scales:
-            termination = -200.0
-            tracking_lin_vel = 1.7
-            tracking_ang_vel = 1.2
-            lin_vel_z = -2.0
+            termination = -0.0
+            tracking_lin_vel = 2.0
+            tracking_ang_vel = 1.5
+            lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -0.001
+            orientation = -0.2
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -0.1
-            #foot_clearance = -0.01
+            base_height = -5.0
+            #foot_clearance = -1.0
             action_rate = -0.02
             smoothness = -0.01
-            feet_air_time = 0.0
+            feet_air_time = 1.0
             collision = -0.0
-            feet_stumble = -2.0
-            stand_still = -2.0
-            torques = -2e-5
+            feet_stumble = -1.0
+            stand_still = -0.05
+            torques = -1e-8
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-            trot = 0.001
+            # trot = 2.0
             hip_pos = -0.5
             all_joint_pos = -0.001
             foot_slip = -0.3
-            lateral_vel_penalty = -1.0
+            lateral_vel_penalty = -2.0
             feet_spacing = -0.1
-            foot_impact_vel = -0.3
-            foot_clearance_by_phase = -0.01
+            foot_impact_vel = -0.1
+            roll_orientation = -3.0
+            #foot_clearance_by_phase = -1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -218,5 +223,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 1300
+        max_iterations = 2000
         

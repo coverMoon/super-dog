@@ -162,15 +162,15 @@ class BlackEnv(LeggedRobot):
         """
 
         # 计算相位信号
-        phase = self._get_phase()
-        sin_pos = torch.sin(2 * torch.pi * phase).unsqueeze(1)
-        cos_pos = torch.cos(2 * torch.pi * phase).unsqueeze(1)
+        # phase = self._get_phase()
+        # sin_pos = torch.sin(2 * torch.pi * phase).unsqueeze(1)
+        # cos_pos = torch.cos(2 * torch.pi * phase).unsqueeze(1)
 
-        stance_mask = self._get_gait_phase()    # 理想的触地时序
-        contact_mask = self.contact_forces[:, self.feet_indices, 2] > 5.    # 真实的触地状态
+        # stance_mask = self._get_gait_phase()    # 理想的触地时序
+        # contact_mask = self.contact_forces[:, self.feet_indices, 2] > 5.    # 真实的触地状态
 
         # 构建基础观测向量
-        base_obs = torch.cat((   
+        current_obs = torch.cat((   
                                     self.commands[:, :3] * self.commands_scale,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
@@ -181,12 +181,12 @@ class BlackEnv(LeggedRobot):
 
         # 添加噪声
         if self.add_noise:
-            base_obs += (2 * torch.rand_like(base_obs) - 1) * self.noise_scale_vec[0:base_obs.shape[1]]
+            current_obs += (2 * torch.rand_like(current_obs) - 1) * self.noise_scale_vec[0:current_obs.shape[1]]
 
         # 拼接相位信号
         # 将相位拼接到最前面 (Sin, Cos, Commands, AngVel, ...)
         # 这样网络能最早“看到”周期信号
-        current_obs = torch.cat((sin_pos, cos_pos, base_obs), dim=-1)
+        # current_obs = torch.cat((sin_pos, cos_pos, base_obs), dim=-1)
 
         # 添加感知输入 (高度图等)
         # add perceptive inputs if not blind
@@ -199,8 +199,9 @@ class BlackEnv(LeggedRobot):
 
         # 更新历史缓存 (滑动窗口)
         self.obs_buf = torch.cat((current_obs[:, :self.num_one_step_obs], self.obs_buf[:, :-self.num_one_step_obs]), dim=-1)
-        self.privileged_obs_buf = torch.cat((stance_mask, # [2] 目标相位掩码
-                                             contact_mask, # [4] 真实触地掩码
+        self.privileged_obs_buf = torch.cat((
+                                            #  stance_mask, # [2] 目标相位掩码
+                                            #  contact_mask, # [4] 真实触地掩码
                                              current_obs[:, :self.num_one_step_privileged_obs], 
                                              self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
 
@@ -211,14 +212,14 @@ class BlackEnv(LeggedRobot):
         """
         # 计算相位信号
         phase = self._get_phase()
-        sin_pos = torch.sin(2 * torch.pi * phase).unsqueeze(1)
-        cos_pos = torch.cos(2 * torch.pi * phase).unsqueeze(1)
+        # sin_pos = torch.sin(2 * torch.pi * phase).unsqueeze(1)
+        # cos_pos = torch.cos(2 * torch.pi * phase).unsqueeze(1)
 
-        stance_mask = self._get_gait_phase()    # 理想的触地时序
-        contact_mask = self.contact_forces[:, self.feet_indices, 2] > 5.    # 真实的触地状态
+        # stance_mask = self._get_gait_phase()    # 理想的触地时序
+        # contact_mask = self.contact_forces[:, self.feet_indices, 2] > 5.    # 真实的触地状态
 
         # 构建基础物理观测
-        base_obs = torch.cat((      self.commands[:, :3] * self.commands_scale,
+        current_obs = torch.cat((   self.commands[:, :3] * self.commands_scale,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
@@ -228,11 +229,11 @@ class BlackEnv(LeggedRobot):
         
         # 添加噪声
         if self.add_noise:
-            base_obs += (2 * torch.rand_like(base_obs) - 1) * self.noise_scale_vec[0:base_obs.shape[1]]
+            current_obs += (2 * torch.rand_like(current_obs) - 1) * self.noise_scale_vec[0:current_obs.shape[1]]
 
         # 拼接相位信号 + 基础观测
         # 顺序匹配 compute_observations: [Sin, Cos, Commands, ...]
-        current_obs = torch.cat((sin_pos, cos_pos, base_obs), dim=-1)
+        #current_obs = torch.cat((sin_pos, cos_pos, base_obs), dim=-1)
 
         # 添加感知输入
         current_obs = torch.cat((current_obs, self.base_lin_vel * self.obs_scales.lin_vel, self.disturbance[:, 0, :]), dim=-1)
@@ -245,8 +246,9 @@ class BlackEnv(LeggedRobot):
 
         # 返回特权观测
         # 这里只返回 termination_ids 对应的部分
-        return torch.cat((stance_mask, # [2] 目标相位掩码
-                          contact_mask, # [4] 真实触地掩码
+        return torch.cat((
+                        #   stance_mask, # [2] 目标相位掩码
+                        #   contact_mask, # [4] 真实触地掩码
                           current_obs[:, :self.num_one_step_privileged_obs], 
                           self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
                           dim=-1)[env_ids]
@@ -483,4 +485,8 @@ class BlackEnv(LeggedRobot):
         
         # 7. 求和并应用移动掩码
         return torch.sum(error, dim=1) * move_cmd.float()
+    
+    def _reward_roll_orientation(self):
+        """ 惩罚 roll 轴倾角"""
+        return torch.sum(torch.square(self.projected_gravity[:, 1:2]), dim=1)
 
