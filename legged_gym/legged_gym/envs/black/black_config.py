@@ -152,7 +152,7 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 2800
+        num_envs = 4096
         num_one_step_observations = 45
         num_observations = num_one_step_observations * 6
 
@@ -223,5 +223,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 2000
+        max_iterations = 1000
         
