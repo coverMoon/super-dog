@@ -91,6 +91,7 @@ def play(args, x_vel=0.0, y_vel=0.5, yaw_vel=0.0):
         env.commands[:, 2] = yaw_vel
         obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
 
+
         if RECORD_FRAMES:
             if i % 2:
                 filename = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames', f"{img_idx}.png")
@@ -132,4 +133,4 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     args = get_args()
-    play(args, x_vel=1.5, y_vel=0.0, yaw_vel=0.0)
+    play(args, x_vel=0.0, y_vel=0.0, yaw_vel=0.0)

@@ -1,6 +1,7 @@
 from legged_gym.envs.base.legged_robot import LeggedRobot
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
+from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 import torch
 
 class BlackEnv(LeggedRobot):
@@ -157,6 +158,49 @@ class BlackEnv(LeggedRobot):
             self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
             self.env_origins[:, 2] = 0.
 
+    def _compute_torques(self, actions):
+        """ Compute torques from actions.
+            Actions can be interpreted as position or velocity targets given to a PD controller, or directly as scaled torques.
+            [NOTE]: torques must have the same dimension as the number of DOFs, even if some DOFs are not actuated.
+
+        Args:
+            actions (torch.Tensor): Actions
+
+        Returns:
+            [torch.Tensor]: Torques sent to the simulation
+        """
+        #pd controller
+        actions_scaled = actions * self.cfg.control.action_scale
+        actions_scaled[:, [0, 3, 6, 9]] *=self.cfg.control.hip_reduction
+        self.joint_pos_target = self.default_dof_pos + actions_scaled
+
+        control_type = self.cfg.control.control_type
+        if control_type=="P":
+            torques = self.p_gains * self.Kp_factors * (self.joint_pos_target - self.dof_pos) - self.d_gains * self.Kd_factors * self.dof_vel
+        elif control_type=="V":
+            torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
+        elif control_type=="T":
+            torques = actions_scaled
+        else:
+            raise NameError(f"Unknown controller type: {control_type}")
+        
+        # =======================================================
+        # [Sim2Real 修改] 添加电机经验摩擦模型 (M8010-6)
+        # =======================================================
+        # 经验参数：针对 Unitree Go1 的 M8010 电机
+        # 干摩擦 (Coulomb Friction): ~0.8 Nm
+        # 粘滞阻尼 (Viscous Damping): ~0.1 Nm/(rad/s)
+
+        # 摩擦力方向与速度相反
+        friction_torque = 0.8 * torch.sign(self.dof_vel) + 0.1 * self.dof_vel
+        # 使用 tanh 代替 sign 实现平滑过渡，避免零速震荡
+        # friction_torque = 0.8 * torch.tanh(5.0 * self.dof_vel) + 0.1 * self.dof_vel
+
+        # 从理想 PD 力矩中减去摩擦消耗
+        torques = torques - friction_torque
+
+        return torch.clip(torques, -self.torque_limits, self.torque_limits)
+
     def compute_observations(self):
         """ Computes observations
         """
@@ -295,7 +339,8 @@ class BlackEnv(LeggedRobot):
         rew = base_rew * (beta * phase_score)
         
         # 只有在有速度指令时才给予奖励 (静止时不需要踏步)
-        rew = rew * (torch.norm(self.commands[:, :2], dim=1) > 0.1).float()
+        move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
+        rew = rew * move_cmd.float()
         
         # 仅在有移动指令时生效
         return rew
@@ -318,8 +363,20 @@ class BlackEnv(LeggedRobot):
         """
 
         hip_indices = [0, 3, 6, 9]
+        # 计算惩罚
+        penalty = torch.sum(torch.abs(self.dof_pos[:, hip_indices] - self.default_dof_pos[:, hip_indices]), dim=1)
 
-        return torch.sum(torch.abs(self.dof_pos[:, hip_indices] - self.default_dof_pos[:, hip_indices]), dim=1)
+        # 获取速度指令
+        vy = self.commands[:, 1]
+        vw = self.commands[:, 2]
+
+        # 判断是否直行
+        is_straight_command = (torch.abs(vy) < 0.1) & (torch.abs(vw) < 0.1)
+
+        # 增加分部缩放因子
+        scale = torch.where(is_straight_command, 1.0, 1.0)
+
+        return scale * penalty
 
     def _reward_all_joint_pos(self):
         """
@@ -478,6 +535,9 @@ class BlackEnv(LeggedRobot):
         # sin_val 在此处为负数 (-1 ~ 0)，所以 -sin_val 为正数 (0 ~ 1)
         swing_target = -sin_val * self.cfg.rewards.clearance_height_target
         swing_penalty = torch.square(feet_height - swing_target)
+
+        # 只惩罚低于半正弦波轨迹。允许为了避障而抬得更高。
+        # swing_target = -sin_val * self.cfg.rewards.clearance_height_target
         
         # 6. 组合惩罚
         # 根据相位选择使用哪一种惩罚
@@ -490,3 +550,158 @@ class BlackEnv(LeggedRobot):
         """ 惩罚 roll 轴倾角"""
         return torch.sum(torch.square(self.projected_gravity[:, 1:2]), dim=1)
 
+    def _reward_stand_still(self):
+        # 1. 判定静止命令条件 (增加一点余量，防止浮点漂移)
+        # 只有当水平速度指令和旋转指令都很小时，才视为静止
+        # 判定静止命令条件
+        lin_cmd_norm = torch.norm(self.commands[:, :2], dim=1)
+        ang_cmd_norm = torch.abs(self.commands[:, 2])
+        is_still = (lin_cmd_norm < 0.1) & (ang_cmd_norm < 0.1)
+    
+        # 2. 关节位置惩罚：强迫回归 default_dof_pos
+        pos_error = torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1)
+    
+        # 3. 关节速度惩罚：强迫停止抖动
+        vel_error = torch.sum(torch.abs(self.dof_vel), dim=1)
+    
+        # 4. 脚部悬空惩罚
+        # 如果处于静止命令，但有脚离地 (contact force < 1.0)，给予重罚
+        contact_forces = torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1)
+        # 统计四只脚中有几只脚悬空 (力小于1.0)
+        feet_in_air = torch.sum((contact_forces < 1.0).float(), dim=1)
+    
+        # 组合各项惩罚
+        penalty = 0.5 * pos_error + 0.005 * vel_error + 0.5 * feet_in_air
+
+        # 返回惩罚
+        return penalty * is_still
+
+
+    def _reward_raibert_heuristic(self):
+        """
+        [Raibert 式落脚位置奖励]
+        鼓励脚部落在理想位置以稳定步态
+        """
+        
+        # 获取支撑状态
+        # stance_mask: [num_envs, 2]
+        # col 0: 对应FL和RR腿，col 1: 对应FR和RL腿
+        # 1 表示支撑相，0 表示摆动相
+        stance_mask = self._get_gait_phase()
+
+        # 推导四只脚的 is_swing（摆动为1，支撑为0）
+        # 顺序: FL, FR, RL, RR
+        swing_fl = 1.0 - stance_mask[:, 0]
+        swing_fr = 1.0 - stance_mask[:, 1]
+        swing_rl = 1.0 - stance_mask[:, 1]
+        swing_rr = 1.0 - stance_mask[:, 0]
+
+        # 组合为 [num_envs, 4] 
+        is_swing = torch.stack((swing_fl, swing_fr, swing_rl, swing_rr), dim=1)
+
+        # 定义名义站立位置
+        nom_x = 0.2126
+        nom_y = 0.1554
+
+        # 构造四只脚相对于身体中心的默认站位
+        nominal_stance = torch.tensor([
+            [ nom_x,  nom_y],  # FL
+            [ nom_x, -nom_y],  # FR
+            [-nom_x,  nom_y],  # RL
+            [-nom_x, -nom_y],  # RR
+        ], device=self.device).unsqueeze(0).repeat(self.num_envs, 1, 1)  # shape: (num_envs, 4, 2)
+
+        # 计算 Raibert 目标位置
+        # 标准公式：Target = Nominal + v * (T_stance / 2) + k * (v - v_cmd)
+
+        cycle_time = self.cfg.rewards.cycle_time
+        stance_time = cycle_time * 0.5  # 假设一半周期为支撑相
+
+        # 获取基础速度信息
+        # 线性速度 [num_envs, 2]
+        v_lin_body = self.base_lin_vel[:, 0:2]
+        v_lin_cmd = self.commands[:, 0:2]
+
+        # 角速度
+        omega_z = self.base_ang_vel[:, 2]  # shape: (num_envs,)
+        omega_cmd = self.commands[:, 2]  # shape: (num_envs,)
+
+        # 计算旋转引起的切向速度 (v = omega x r)
+        # r 为脚相对于机身中心的向量
+        r_x = nominal_stance[:, :, 0] # shape: (num_envs, 4)
+        r_y = nominal_stance[:, :, 1] # shape: (num_envs, 4)
+        
+        # 实际角速度产生的切向速度 [num_envs, 4, 2]
+        # v_x = -omega_z * r_y
+        # v_y =  omega_z * r_x
+        v_rot_x = -omega_z.unsqueeze(1) * r_y   # shape: (num_envs, 4)
+        v_rot_y =  omega_z.unsqueeze(1) * r_x   # shape: (num_envs, 4)
+        v_rot_body = torch.stack((v_rot_x, v_rot_y), dim=2)  # shape: (num_envs, 4, 2)
+
+        # 指令角速度产生的切向速度 [num_envs, 4, 2]
+        v_cmd_rot_x = -omega_cmd.unsqueeze(1) * r_y
+        v_cmd_rot_y =  omega_cmd.unsqueeze(1) * r_x
+        v_cmd_rot = torch.stack((v_cmd_rot_x, v_cmd_rot_y), dim=2)
+
+
+        # 定义增益 
+        k_lin = self.cfg.rewards.k_raibert_lin        # 原有的增益，用于平动
+        k_rot = self.cfg.rewards.k_raibert_rot
+
+        # 1. 线性部分的 Offset
+        # v_lin_err = v_lin_body - v_lin_cmd
+        # linear_offset = v_lin_body * (T/2) + k_lin * (err)
+        v_lin_body_exp = v_lin_body.unsqueeze(1) # [num_envs, 1, 2]
+        v_lin_cmd_exp  = v_lin_cmd.unsqueeze(1)
+        
+        offset_linear = v_lin_cmd_exp * (stance_time / 2.0) + k_lin * (v_lin_body_exp - v_lin_cmd_exp)
+
+        # 2. 旋转部分的 Offset
+        offset_rotation = v_cmd_rot * (stance_time / 2.0) + k_rot * (v_rot_body - v_cmd_rot)
+
+        raibert_offset = offset_linear + 1.5 * offset_rotation  # shape: (num_envs, 4, 2)
+        
+        p_desired = nominal_stance + raibert_offset  # shape: (num_envs, 4, 2)
+        
+        # 获取实际脚部位置
+        feet_pos_world = self.feet_pos  # [num_envs, 4, 3]
+        base_pos = self.root_states[:, 0:3].unsqueeze(1)
+        base_quat = self.root_states[:, 3:7]
+
+        # 转换到 Base 坐标系
+        feet_pos_rel = feet_pos_world - base_pos
+        
+        flat_base_quat = base_quat.unsqueeze(1).repeat(1, 4, 1).view(-1, 4)
+        flat_feet_rel = feet_pos_rel.view(-1, 3)
+        flat_feet_local = quat_rotate_inverse(flat_base_quat, flat_feet_rel)
+
+        p_actual = flat_feet_local.view(self.num_envs, 4, 3)[:, :, 0:2]
+
+        # 计算奖励
+        # 计算欧氏距离平方
+        error_vec = p_actual - p_desired
+        error_sq = torch.sum(torch.square(error_vec), dim=2) # [num_envs, 4]
+
+        # 转换为高斯奖励
+        sigma = 0.2
+        rew = torch.exp(-error_sq / sigma)
+
+        # 掩码：只关心摆动腿 (Swing Legs)
+        rew = rew * is_swing.float()
+
+        # ===== 只在摆动相后半部分计算奖励 =====
+        phase = self._get_phase().unsqueeze(1)  # shape: (num_envs, 1)
+        offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
+        feet_phases = (phase + offsets) % 1.0  # shape: (num_envs, 4)
+        swing_phase_mask = (feet_phases > 0.9).float()
+        rew = rew * swing_phase_mask
+
+        # 平均化：除以摆动腿数量 (加小量防除零)
+        num_swing_legs = torch.sum(is_swing, dim=1)
+        final_rew = torch.sum(rew, dim=1) / (num_swing_legs + 1e-5)
+
+        # 判断指令是否移动
+        is_move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
+
+        # 仅在有移动指令时生效
+        return final_rew * is_move_cmd.float()

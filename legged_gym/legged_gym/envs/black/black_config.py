@@ -5,17 +5,11 @@ class BlackCfg(LeggedRobotCfg):
     class init_state(LeggedRobotCfg.init_state):
         # 1. 初始姿态
         pos = [0.0, 0.0, 0.45] 
-        # default_joint_angles = {
-        #     'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.82,   'FL_calf_joint': -1.5,
-        #     'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.82,  'FR_calf_joint': 1.5,
-        #     'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.82,   'RL_calf_joint': -1.5,
-        #     'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.82,  'RR_calf_joint': 1.5
-        # }
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
-            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.9,   'RL_calf_joint': -1.527,
-            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.9,  'RR_calf_joint': 1.527
+            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527,
+            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527
         }
 
     class control(LeggedRobotCfg.control):
@@ -26,17 +20,31 @@ class BlackCfg(LeggedRobotCfg):
             'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
             'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0
         }
-        # stiffness = {
-        #     'FL_hip_joint': 25.0, 'RL_hip_joint': 25.0, 'FR_hip_joint': 25.0, 'RR_hip_joint': 25.0,
-        #     'FL_thigh_joint': 25.0, 'RL_thigh_joint': 25.0, 'FR_thigh_joint': 25.0, 'RR_thigh_joint': 25.0,
-        #     'FL_calf_joint': 25.0, 'RL_calf_joint': 25.0, 'FR_calf_joint': 25.0, 'RR_calf_joint': 25.0
-        # }
         # 阻尼 (D Gain)
         damping = {
             'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
             'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
             'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0
         }
+
+        # # 刚度 (P Gain)
+        # stiffness = {
+        #     'FL_hip_joint': 60.0, 'RL_hip_joint': 60.0, 'FR_hip_joint': 60.0, 'RR_hip_joint': 60.0,
+        #     'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
+        #     'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0
+        # }
+        # # 阻尼 (D Gain)
+        # damping = {
+        #     'FL_hip_joint': 1.5, 'RL_hip_joint': 1.5, 'FR_hip_joint': 1.5, 'RR_hip_joint': 1.5,
+        #     'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
+        #     'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2
+        # }
+
+        # stiffness = {
+        #     'FL_hip_joint': 25.0, 'RL_hip_joint': 25.0, 'FR_hip_joint': 25.0, 'RR_hip_joint': 25.0,
+        #     'FL_thigh_joint': 25.0, 'RL_thigh_joint': 25.0, 'FR_thigh_joint': 25.0, 'RR_thigh_joint': 25.0,
+        #     'FL_calf_joint': 25.0, 'RL_calf_joint': 25.0, 'FR_calf_joint': 25.0, 'RR_calf_joint': 25.0
+        # }
         # damping = {
         #     'FL_hip_joint': 0.8, 'RL_hip_joint': 0.8, 'FR_hip_joint': 0.8, 'RR_hip_joint': 0.8,
         #     'FL_thigh_joint': 0.8, 'RL_thigh_joint': 0.8, 'FR_thigh_joint': 0.8, 'RR_thigh_joint': 0.8,
@@ -63,10 +71,10 @@ class BlackCfg(LeggedRobotCfg):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
-            lin_vel_y = [0.1, 0.1]   # min max [m/s]
-            # lin_vel_y = [-1.0, 1.0]   # min max [m/s]
-            ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
-            # ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
+            # lin_vel_y = [0.1, 0.1]   # min max [m/s]
+            lin_vel_y = [-1.0, 1.0]   # min max [m/s]
+            # ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
+            ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
             heading = [-3.14, 3.14]
             # lin_vel_x = [0.0, 0.0] # min max [m/s]
             # lin_vel_y = [-0.0, 0.0]   # min max [m/s]
@@ -78,10 +86,10 @@ class BlackCfg(LeggedRobotCfg):
         payload_mass_range = [-2, 3]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.10, 0.10]
+        com_displacement_range = [-0.08, 0.08]
 
         randomize_link_mass = True
-        link_mass_range = [0.75, 1.25]
+        link_mass_range = [0.8, 1.2]
         
         randomize_friction = True
         friction_range = [0.2, 1.5]
@@ -90,13 +98,13 @@ class BlackCfg(LeggedRobotCfg):
         restitution_range = [0., 1.0]
         
         randomize_motor_strength = True
-        motor_strength_range = [0.75, 1.25]
+        motor_strength_range = [0.8, 1.2]
         
         randomize_kp = True
-        kp_range = [0.7, 1.3]
+        kp_range = [0.8, 1.2]
         
         randomize_kd = True
-        kd_range = [0.7, 1.3]
+        kd_range = [0.8, 1.2]
         
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
@@ -126,7 +134,7 @@ class BlackCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -152,7 +160,7 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 2800
+        num_envs = 4096
         num_one_step_observations = 45
         num_observations = num_one_step_observations * 6
 
@@ -167,41 +175,44 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
+        k_raibert_lin = 0.05
+        k_raibert_rot = 0.05
         clearance_height_target = 0.08
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.41
+        base_height_target = 0.4
         only_positive_rewards = False
         class scales:
-            termination = -0.0
+            termination = -200.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -0.2
+            orientation = -5.0
             dof_acc = -2.5e-7
             joint_power = -2e-5
             base_height = -5.0
             #foot_clearance = -1.0
-            action_rate = -0.02
+            action_rate = -0.03
             smoothness = -0.01
             feet_air_time = 1.0
             collision = -0.0
             feet_stumble = -1.0
-            stand_still = -0.05
+            stand_still = -2.0
             torques = -1e-8
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-            # trot = 2.0
+            trot = 1.5
             hip_pos = -0.5
             all_joint_pos = -0.001
             foot_slip = -0.3
             lateral_vel_penalty = -2.0
-            feet_spacing = -0.1
+            # feet_spacing = -0.1
             foot_impact_vel = -0.1
             roll_orientation = -3.0
-            #foot_clearance_by_phase = -1.0
+            foot_clearance_by_phase = -1.0
+            # raibert_heuristic = 1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -223,5 +234,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # 指定算法
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        max_iterations = 2000
+        max_iterations = 500
         
