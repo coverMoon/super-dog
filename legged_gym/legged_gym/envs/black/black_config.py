@@ -192,27 +192,27 @@ class BlackCfg(LeggedRobotCfg):
             joint_power = -2e-5
             base_height = -5.0
             #foot_clearance = -1.0
-            action_rate = -0.03
+            action_rate = -0.2
             smoothness = -0.01
             feet_air_time = 1.0
             collision = -0.0
             feet_stumble = -1.0
-            stand_still = -2.0
-            torques = -1e-8
+            stand_still = -1.0
+            torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-            trot = 1.5
+            trot = 1.0
             hip_pos = -0.5
-            all_joint_pos = -0.001
-            foot_slip = -0.3
+            all_joint_pos = -0.003
+            foot_slip = -0.5
             lateral_vel_penalty = -2.0
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
             roll_orientation = -3.0
             foot_clearance_by_phase = -1.0
-            # raibert_heuristic = 1.0
+            # aibert_heuristic = 1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:

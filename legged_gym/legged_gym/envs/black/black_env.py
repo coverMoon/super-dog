@@ -95,6 +95,47 @@ class BlackEnv(LeggedRobot):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         return env_ids, termination_privileged_obs
+    
+    # def _post_physics_step_callback(self):
+    #     """ Callback called before computing terminations, rewards, and observations
+    #         Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
+    #     """
+    #     # 
+    #     env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
+    #     self._resample_commands(env_ids)
+    #     if self.cfg.commands.heading_command:
+    #         forward = quat_apply(self.base_quat, self.forward_vec)
+    #         heading = torch.atan2(forward[:, 1], forward[:, 0])
+
+    #         # 1. 计算原始的 Heading 误差
+    #         heading_error = wrap_to_pi(self.commands[:, 3] - heading)
+
+    #         # 2. 定义死区阈值
+    #         # 线性速度死区：小于 0.1 m/s 视为静止意图
+    #         lin_vel_deadzone = 0.1
+    #         # 角度误差死区：小于 0.05 rad (约 2.86度) 视为已对准
+    #         heading_error_deadzone = 0.05
+    #         # 3. 判断是否进入死区
+    #         # 如果 (水平指令很小) 且 (角度误差也很小) -> 强制不旋转
+    #         is_standing = torch.norm(self.commands[:, :2], dim=1) < lin_vel_deadzone
+    #         is_aligned = torch.abs(heading_error) < heading_error_deadzone
+    #         should_stop_turning = is_standing & is_aligned
+
+    #         # 4. 计算角速度指令 (P控制器)
+    #         ang_vel_target = 0.5 * heading_error
+            
+    #         # 5. 应用死区：如果满足静止条件，将目标角速度强制置 0
+    #         ang_vel_target[should_stop_turning] = 0.0
+            
+    #         # 6. 写入指令并裁剪
+    #         self.commands[:, 2] = torch.clip(ang_vel_target, -2., 2.)
+
+    #     if self.cfg.terrain.measure_heights:
+    #         self.measured_heights = self._get_heights()
+    #     if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
+    #         self._push_robots()
+    #     if self.cfg.domain_rand.disturbance and (self.common_step_counter % self.cfg.domain_rand.disturbance_interval == 0):
+    #         self._disturbance_robots()
 
     def _get_phase(self):
         """ 
@@ -192,9 +233,9 @@ class BlackEnv(LeggedRobot):
         # 粘滞阻尼 (Viscous Damping): ~0.1 Nm/(rad/s)
 
         # 摩擦力方向与速度相反
-        friction_torque = 0.8 * torch.sign(self.dof_vel) + 0.1 * self.dof_vel
+        # friction_torque = 0.8 * torch.sign(self.dof_vel) + 0.1 * self.dof_vel
         # 使用 tanh 代替 sign 实现平滑过渡，避免零速震荡
-        # friction_torque = 0.8 * torch.tanh(5.0 * self.dof_vel) + 0.1 * self.dof_vel
+        friction_torque = 0.8 * torch.tanh(8.0 * self.dof_vel) + 0.1 * self.dof_vel
 
         # 从理想 PD 力矩中减去摩擦消耗
         torques = torques - friction_torque
@@ -534,10 +575,10 @@ class BlackEnv(LeggedRobot):
         # 严格追踪半正弦波轨迹。
         # sin_val 在此处为负数 (-1 ~ 0)，所以 -sin_val 为正数 (0 ~ 1)
         swing_target = -sin_val * self.cfg.rewards.clearance_height_target
-        swing_penalty = torch.square(feet_height - swing_target)
+        # swing_penalty = torch.square(feet_height - swing_target)
 
         # 只惩罚低于半正弦波轨迹。允许为了避障而抬得更高。
-        # swing_target = -sin_val * self.cfg.rewards.clearance_height_target
+        swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.))
         
         # 6. 组合惩罚
         # 根据相位选择使用哪一种惩罚
@@ -551,30 +592,20 @@ class BlackEnv(LeggedRobot):
         return torch.sum(torch.square(self.projected_gravity[:, 1:2]), dim=1)
 
     def _reward_stand_still(self):
-        # 1. 判定静止命令条件 (增加一点余量，防止浮点漂移)
-        # 只有当水平速度指令和旋转指令都很小时，才视为静止
-        # 判定静止命令条件
-        lin_cmd_norm = torch.norm(self.commands[:, :2], dim=1)
-        ang_cmd_norm = torch.abs(self.commands[:, 2])
-        is_still = (lin_cmd_norm < 0.1) & (ang_cmd_norm < 0.1)
-    
-        # 2. 关节位置惩罚：强迫回归 default_dof_pos
-        pos_error = torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1)
-    
-        # 3. 关节速度惩罚：强迫停止抖动
-        vel_error = torch.sum(torch.abs(self.dof_vel), dim=1)
-    
-        # 4. 脚部悬空惩罚
-        # 如果处于静止命令，但有脚离地 (contact force < 1.0)，给予重罚
-        contact_forces = torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1)
-        # 统计四只脚中有几只脚悬空 (力小于1.0)
-        feet_in_air = torch.sum((contact_forces < 1.0).float(), dim=1)
-    
-        # 组合各项惩罚
-        penalty = 0.5 * pos_error + 0.005 * vel_error + 0.5 * feet_in_air
+        # Penalize motion at zero commands
+        # 判定静止条件
+        is_still = torch.norm(self.commands[:, :2], dim=1) < 0.1
 
-        # 返回惩罚
-        return penalty * is_still
+        # 计算位置误差
+        pos_error = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
+
+        # 计算速度误差
+        vel_error = torch.sum(torch.abs(self.dof_vel), dim=1)
+
+        # 组合误差
+        error = pos_error + 0.01 * vel_error
+    
+        return error * is_still
 
 
     def _reward_raibert_heuristic(self):
