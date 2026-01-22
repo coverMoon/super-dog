@@ -199,6 +199,44 @@ class BlackEnv(LeggedRobot):
             self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
             self.env_origins[:, 2] = 0.
 
+    def _process_rigid_body_props(self, props, env_id):
+        # if env_id==0:
+        #     sum = 0
+        #     for i, p in enumerate(props):
+        #         sum += p.mass
+        #         print(f"Mass of body {i}: {p.mass} (before randomization)")
+        #     print(f"Total mass {sum} (before randomization)")
+        # randomize base mass
+        if self.cfg.domain_rand.randomize_payload_mass:
+            props[0].mass = self.default_rigid_body_mass[0] + self.payload[env_id, 0]
+            
+        if self.cfg.domain_rand.randomize_com_displacement:
+            props[0].com = gymapi.Vec3(self.com_displacement[env_id, 0], self.com_displacement[env_id, 1], self.com_displacement[env_id, 2])
+
+        if self.cfg.domain_rand.randomize_link_mass:
+            rng = self.cfg.domain_rand.link_mass_range
+            for i in range(1, len(props)):
+                scale = np.random.uniform(rng[0], rng[1])
+                props[i].mass = scale * self.default_rigid_body_mass[i]
+
+        # 随机化惯性张量 (Inertia Tensor)
+        if hasattr(self.cfg.domain_rand, "randomize_inertia") and self.cfg.domain_rand.randomize_inertia:
+            rng = self.cfg.domain_rand.inertia_range
+            for i in range(len(props)):
+                # 为三个主轴分别生成独立的随机缩放因子
+                # 这模拟了质量分布在不同方向上的不确定性
+                scale_x = np.random.uniform(rng[0], rng[1])
+                scale_y = np.random.uniform(rng[0], rng[1])
+                scale_z = np.random.uniform(rng[0], rng[1])
+                
+                # 修改惯性张量的对角元素 (Ixx, Iyy, Izz)
+                # props[i].inertia 是一个 gymapi.Mat33 矩阵
+                props[i].inertia.x.x *= scale_x
+                props[i].inertia.y.y *= scale_y
+                props[i].inertia.z.z *= scale_z
+
+        return props
+
     def _compute_torques(self, actions):
         """ Compute torques from actions.
             Actions can be interpreted as position or velocity targets given to a PD controller, or directly as scaled torques.
@@ -235,7 +273,8 @@ class BlackEnv(LeggedRobot):
         # 摩擦力方向与速度相反
         # friction_torque = 0.8 * torch.sign(self.dof_vel) + 0.1 * self.dof_vel
         # 使用 tanh 代替 sign 实现平滑过渡，避免零速震荡
-        friction_torque = 0.8 * torch.tanh(8.0 * self.dof_vel) + 0.1 * self.dof_vel
+        # friction_torque = 0.8 * torch.tanh(8.0 * self.dof_vel) + 0.1 * self.dof_vel
+        friction_torque = 0.35 * torch.tanh(3.0 * self.dof_vel) + 0.1 * self.dof_vel
 
         # 从理想 PD 力矩中减去摩擦消耗
         torques = torques - friction_torque
@@ -385,6 +424,51 @@ class BlackEnv(LeggedRobot):
         
         # 仅在有移动指令时生效
         return rew
+    
+    def _reward_walk(self):
+        """
+        [Walk 慢走/四拍步态奖励]
+        强制实现四只脚依次抬起的时序。
+        时序：RL(0.0) -> FL(0.25) -> RR(0.5) -> FR(0.75)
+        """
+        # 1. 获取当前接触状态 (0~1)
+        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5) # [num_envs, 4]
+        
+        # 2. 获取基础相位 (0~1)
+        phase = self._get_phase() # [num_envs]
+        
+        # 3. 定义四只脚的相位偏移 (Phase Offsets)
+        # 索引: 0->FL, 1->FR, 2->RL, 3->RR
+        # 对应时序: RL=0, FL=0.25, RR=0.5, FR=0.75
+        # 注意：这里的偏移量决定了谁先抬腿
+        offsets = torch.tensor([0.25, 0.75, 0.0, 0.5], device=self.device).unsqueeze(0)
+        
+        # 4. 计算每只脚的目标相位
+        # 扩展 phase 维度以匹配 offsets: [num_envs, 4]
+        feet_phases = (phase.unsqueeze(1) + offsets) % 1.0
+        
+        # 5. 生成目标触地信号 (Target Stance)
+        # 使用 Sin 波生成目标。
+        # Walk 步态的一个难点是 Duty Factor (触地占比)。
+        # 标准 Sin 波 > 0 只有 50% 触地，这对 Walk 来说太快了（那是 Trot）。
+        # Walk 通常需要 75% 的时间触地。
+        # 这里我们修改阈值：Sin > -0.5 视为应当触地 (约 66%~75% 触地时间)
+        
+        sin_val = torch.sin(2 * torch.pi * feet_phases)
+        target_stance = (sin_val > -0.5).float() 
+        
+        # 6. 计算匹配误差
+        # 比较实际触地 (contact_prob) 和 目标触地 (target_stance)
+        match_error = torch.square(contact_prob - target_stance)
+        
+        # 对四只脚的误差求平均
+        rew = 1.0 - torch.mean(match_error, dim=1)
+        
+        # 7. 仅在移动时激活
+        move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
+        
+        return rew * move_cmd.float()
     
     def _reward_foot_slip(self):
         """
@@ -575,10 +659,10 @@ class BlackEnv(LeggedRobot):
         # 严格追踪半正弦波轨迹。
         # sin_val 在此处为负数 (-1 ~ 0)，所以 -sin_val 为正数 (0 ~ 1)
         swing_target = -sin_val * self.cfg.rewards.clearance_height_target
-        # swing_penalty = torch.square(feet_height - swing_target)
+        swing_penalty = torch.square(feet_height - swing_target)
 
         # 只惩罚低于半正弦波轨迹。允许为了避障而抬得更高。
-        swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.))
+        # swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.))
         
         # 6. 组合惩罚
         # 根据相位选择使用哪一种惩罚
@@ -586,6 +670,66 @@ class BlackEnv(LeggedRobot):
         
         # 7. 求和并应用移动掩码
         return torch.sum(error, dim=1) * move_cmd.float()
+
+    # def _reward_foot_clearance_by_phase(self):
+    #     """
+    #     [基于相位的动态抬腿奖励 - 适配 Walk 步态]
+    #     目标：
+    #     1. 支撑相 (Stance): 目标高度为0 (允许微小误差)
+    #     2. 摆动相 (Swing): 目标高度跟随轨迹
+    #     注意：Walk 步态下，摆动相只占周期的 ~25%
+    #     """
+    #     # 1. 获取当前脚的高度 (相对于地面)
+    #     feet_height = self._get_feet_heights() 
+
+    #     # 2. 计算每个脚的相位
+    #     phase = self._get_phase().unsqueeze(1)
+        
+    #     # [关键修改 1] 使用与 Walk 步态一致的 Offsets
+    #     # 顺序: FL, FR, RL, RR -> 对应 RL, FL, RR, FR 抬起顺序
+    #     offsets = torch.tensor([0.25, 0.75, 0.0, 0.5], device=self.device).unsqueeze(0)
+        
+    #     feet_phases = (phase + offsets) % 1.0
+
+    #     # 3. 计算正弦波值
+    #     sin_val = torch.sin(2 * torch.pi * feet_phases)
+
+    #     # 4. 移动指令掩码 (静止时不强制)
+    #     move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
+
+    #     # 5. 分阶段计算惩罚
+        
+    #     # [A] 支撑相 (Stance)
+    #     # Walk 的支撑相很长，当 sin_val > -0.5 时都视为支撑相
+    #     # 目标：贴地 (feet_height < 0.02)
+    #     is_stance = sin_val > -0.5
+    #     stance_penalty = torch.square(torch.clip(feet_height - 0.02, min=0.)) 
+        
+    #     # [B] 摆动相 (Swing)
+    #     # 只有当 sin_val <= -0.5 时才视为摆动相 (处于正弦波底部)
+    #     # 我们需要把 [-1.0, -0.5] 这个区间映射到高度曲线 [0, 1]
+        
+    #     # 归一化摆动进度：将 [-1, -0.5] 映射为 [0, 1] 的某种曲线用于计算目标高度
+    #     # 简单做法：利用 sin_val 的绝对值。
+    #     # 当 sin = -1 (波谷) 时，目标高度最大；当 sin = -0.5 时，目标高度接近 0
+        
+    #     # 计算目标高度曲线
+    #     # (sin_val + 0.5) 在摆动期范围是 [-0.5, 0]
+    #     # 乘以 -2 变为 [1.0, 0]
+    #     swing_scale = (sin_val + 0.5) * -2.0 
+    #     swing_scale = torch.clip(swing_scale, 0., 1.) # 截断保护
+        
+    #     target_height = swing_scale * self.cfg.rewards.clearance_height_target
+        
+    #     # 计算摆动惩罚：低于目标高度才惩罚
+    #     swing_penalty = torch.square(torch.clip(feet_height - target_height, max=0.))
+        
+    #     # 6. 组合惩罚
+    #     # 根据是否是支撑相选择惩罚项
+    #     error = torch.where(is_stance, stance_penalty, swing_penalty)
+        
+    #     # 7. 求和并应用移动掩码
+    #     return torch.sum(error, dim=1) * move_cmd.float()
     
     def _reward_roll_orientation(self):
         """ 惩罚 roll 轴倾角"""

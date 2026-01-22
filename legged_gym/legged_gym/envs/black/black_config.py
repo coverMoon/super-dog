@@ -15,6 +15,19 @@ class BlackCfg(LeggedRobotCfg):
     class control(LeggedRobotCfg.control):
         # 2. PD 参数
         # 刚度 (P Gain)
+        # stiffness = {
+        #     'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
+        #     'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
+        #     'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0
+        # }
+        # # 阻尼 (D Gain)
+        # damping = {
+        #     'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
+        #     'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
+        #     'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0
+        # }
+
+        # 刚度 (P Gain)
         stiffness = {
             'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
             'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
@@ -22,9 +35,9 @@ class BlackCfg(LeggedRobotCfg):
         }
         # 阻尼 (D Gain)
         damping = {
-            'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
-            'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
-            'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0
+            'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
+            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
+            'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2
         }
 
         # # 刚度 (P Gain)
@@ -65,14 +78,14 @@ class BlackCfg(LeggedRobotCfg):
 
     class commands:
         curriculum = True
-        max_curriculum = 3.0
+        max_curriculum = 2.0
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]   # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
             # ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
             ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
             heading = [-3.14, 3.14]
@@ -109,24 +122,27 @@ class BlackCfg(LeggedRobotCfg):
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
         
+        randomize_inertia = True
+        inertia_range = [0.5, 1.5]
+
         disturbance = True
         disturbance_range = [-30.0, 30.0]
         disturbance_interval = 8
         
         push_robots = True
-        push_interval_s = 16
+        push_interval_s = 18
         max_push_vel_xy = 1.0
 
         # [修改] 延迟设置
         delay = True
         # 延迟步数范围
-        lag_timesteps = 2 
+        lag_timesteps = 3 
         
     class noise:
         add_noise = True
         noise_level = 1.0 # scales other values
         class noise_scales:
-            dof_pos = 0.02
+            dof_pos = 0.08
             dof_vel = 2.0
             lin_vel = 0.1
             ang_vel = 0.3
@@ -134,7 +150,7 @@ class BlackCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -160,7 +176,7 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 4096
+        num_envs = 8192
         num_one_step_observations = 45
         num_observations = num_one_step_observations * 6
 
@@ -174,44 +190,45 @@ class BlackCfg(LeggedRobotCfg):
         episode_length_s = 20 # episode length in seconds
 
     class rewards(LeggedRobotCfg.rewards):
-        cycle_time = 0.8
+        cycle_time = 0.5
         k_raibert_lin = 0.05
         k_raibert_rot = 0.05
         clearance_height_target = 0.08
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.4
+        base_height_target = 0.41
         only_positive_rewards = False
         class scales:
-            termination = -200.0
+            termination = -0.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.5
+            tracking_ang_vel = 1.0
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -5.0
-            dof_acc = -2.5e-7
+            orientation = -2.0
+            dof_acc = -3.2e-7
             joint_power = -2e-5
             base_height = -5.0
             #foot_clearance = -1.0
-            action_rate = -0.2
-            smoothness = -0.01
-            feet_air_time = 1.0
+            action_rate = -0.4
+            smoothness = -0.02
+            feet_air_time = 2.0
             collision = -0.0
-            feet_stumble = -1.0
-            stand_still = -1.0
+            feet_stumble = -0.5
+            stand_still = -1.2
             torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 1.0
-            hip_pos = -0.5
+            # walk = 2.0
+            hip_pos = -0.3
             all_joint_pos = -0.003
             foot_slip = -0.5
             lateral_vel_penalty = -2.0
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
             roll_orientation = -3.0
-            foot_clearance_by_phase = -1.0
+            foot_clearance_by_phase = -2.0
             # aibert_heuristic = 1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
@@ -225,14 +242,51 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         # rnn_hidden_size = 512
         # rnn_num_layers = 1
 
-    class algorithm( LeggedRobotCfgPPO.algorithm ):
+    class algorithm:
+        # training params
+        value_loss_coef = 1.0
+        use_clipped_value_loss = True
+        clip_param = 0.2
         entropy_coef = 0.01
-
-    class runner(LeggedRobotCfgPPO.runner):
+        num_learning_epochs = 5
+        num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
+        learning_rate = 1.e-5 #5.e-4
+        schedule = 'adaptive' # could be adaptive, fixed
+        gamma = 0.99
+        lam = 0.95
+        desired_kl = 0.01
+        max_grad_norm = 1.
+        sym_loss = True
+        obs_permutation = [
+            # 删除前两个相位相关项
+            0.00001, -1, -2,  # 原[2,-3,-4] -> 目标速度，角速度（2-2=0, 3-2=1, 4-2=2）
+    
+            -3, 4, -5,  # 原[-5,6,-7] -> 角速度（5-2=3, 6-2=4, 7-2=5）
+    
+            6, -7, 8,  # 原[8,-9,10] -> 重力投影（8-2=6, 9-2=7, 10-2=8）
+    
+            -12, -13, -14,  # 原[-14,15,16]（14-2=12, 15-2=13, 16-2=14）
+            -9, -10, -11,   # 原[-11,12,13]（11-2=9, 12-2=10, 13-2=11）
+            -18, -19, -20,  # 原[-20,21,22]（20-2=18, 21-2=19, 22-2=20）
+            -15, -16, -17,  # 原[-17,18,19]（17-2=15, 18-2=16, 19-2=17）
+    
+            -24, -25,  -26,  # 原[-26,27,28]（26-2=24, 27-2=25, 28-2=26）
+            -21, -22, -23,  # 原[-23,24,25]（23-2=21, 24-2=22, 25-2=23）
+            -30, -31, -32,  # 原[-32,33,34]（32-2=30, 33-2=31, 34-2=32）
+            -27, -28, -29,  # 原[-29,30,31]（29-2=27, 30-2=28, 31-2=29）
+    
+            -36, -37, -38,  # 原[-38,39,40]（38-2=36, 39-2=37, 40-2=38）
+            -33, -34, -35,  # 原[-35,36,37]（35-2=33, 36-2=34, 37-2=35）
+            -42, -43, -44,  # 原[-44,45,46]（44-2=42, 45-2=43, 46-2=44）
+            -39, -40, -41,   # 原[-41,42,43]（41-2=39, 42-2=40, 43-2=41）
+            # -45,-46
+        ]
+        act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
+        frame_stack = 6
+        sym_coef = 1.0
+    
+    class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_black_dog'
-        # 指定算法
-        policy_class_name = 'HIMActorCritic'
-        algorithm_class_name = 'HIMPPO'
-        max_iterations = 500
-        
+        max_iterations=1000
+         
