@@ -134,11 +134,11 @@ class Terrain:
                 step_height *= -1
 
             # 楼梯宽度的课程学习逻辑
-            # difficulty = 0 (Level 0) -> 宽度 0.8米
+            # difficulty = 0 (Level 0) -> 宽度 0.3米
             # difficulty = 1 (Level 10) -> 宽度 0.2米
 
             # 使用线性插值
-            current_step_width = 0.8 - 0.5 * difficulty
+            current_step_width = 0.3 - 0.1 * difficulty
             # 确保不小于 0.2
             current_step_width = max(current_step_width, 0.2)
 
@@ -155,7 +155,8 @@ class Terrain:
         elif choice < self.proportions[7]:
             broken_bridge_terrain(terrain, gap_size=bridge_gap_size, platform_length=1.0, bridge_width=bridge_width)
         else:
-            pit_terrain(terrain, depth=pit_depth, platform_size=4.)
+            wall_h = 0.1 + 0.3 * difficulty  # 0.1m 到 0.4m
+            high_wall_terrain(terrain, height=wall_h, width=0.3, distance=2.0)
         
         return terrain
 
@@ -235,3 +236,38 @@ def broken_bridge_terrain(terrain, gap_size, platform_length, bridge_width, dept
         
         # 移动到下一段（跳过缺口）
         current_x += platform_pixels + gap_pixels
+
+def high_wall_terrain(terrain, height=1.0, width=0.2, distance=2.0):
+    """
+    生成高墙地形
+    :param terrain: 地形对象
+    :param height: 墙的高度 [m]
+    :param width: 墙的厚度 [m] (建议至少 0.2m 以免漏采样)
+    :param distance: 墙距离地图中心的距离 [m] (机器人通常出生在中心)
+    """
+    # 1. 将物理尺寸转换为像素网格坐标
+    h_raw = int(height / terrain.vertical_scale)
+    w_pixels = int(width / terrain.horizontal_scale)
+    dist_pixels = int(distance / terrain.horizontal_scale)
+    
+    # 2. 获取地图中心点 (像素坐标)
+    center_x = terrain.length // 2
+    
+    # 3. 计算墙在 X 轴上的起始和结束索引
+    # 假设机器人向 +x 方向移动
+    wall_start = center_x + dist_pixels
+    wall_end = wall_start + w_pixels
+    
+    # 4. 边界裁剪 (防止索引越界)
+    wall_start = np.clip(wall_start, 0, terrain.length)
+    wall_end = np.clip(wall_end, 0, terrain.length)
+    
+    # 5. 修改高度图
+    # 先将整个区域设为平地 (0)
+    terrain.height_field_raw[:, :] = 0
+    
+    # 将墙体区域设为指定高度
+    if wall_end > wall_start:
+        terrain.height_field_raw[wall_start:wall_end, :] = h_raw
+        
+    return terrain

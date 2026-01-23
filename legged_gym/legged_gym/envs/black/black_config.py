@@ -102,7 +102,7 @@ class BlackCfg(LeggedRobotCfg):
         com_displacement_range = [-0.08, 0.08]
 
         randomize_link_mass = True
-        link_mass_range = [0.8, 1.2]
+        link_mass_range = [0.75, 1.25]
         
         randomize_friction = True
         friction_range = [0.2, 1.5]
@@ -111,7 +111,7 @@ class BlackCfg(LeggedRobotCfg):
         restitution_range = [0., 1.0]
         
         randomize_motor_strength = True
-        motor_strength_range = [0.8, 1.2]
+        motor_strength_range = [0.75, 1.25]
         
         randomize_kp = True
         kp_range = [0.8, 1.2]
@@ -130,8 +130,8 @@ class BlackCfg(LeggedRobotCfg):
         disturbance_interval = 8
         
         push_robots = True
-        push_interval_s = 18
-        max_push_vel_xy = 1.0
+        push_interval_s = 25
+        max_push_vel_xy = 2.0
 
         # [修改] 延迟设置
         delay = True
@@ -170,8 +170,8 @@ class BlackCfg(LeggedRobotCfg):
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，断桥，陷坑]
-        terrain_proportions = [0.1, 0.1, 0.4, 0.3, 0.1, 0.0, 0.0, 0.0, 0.0]
+        # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，断桥，高墙]
+        terrain_proportions = [0.1, 0.1, 0.4, 0.2, 0.0, 0.0, 0.0, 0.0, 0.2]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
@@ -195,7 +195,7 @@ class BlackCfg(LeggedRobotCfg):
         k_raibert_rot = 0.05
         clearance_height_target = 0.08
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.41
+        base_height_target = 0.43
         only_positive_rewards = False
         class scales:
             termination = -0.0
@@ -203,7 +203,7 @@ class BlackCfg(LeggedRobotCfg):
             tracking_ang_vel = 1.0
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -2.0
+            orientation = -3.0
             dof_acc = -3.2e-7
             joint_power = -2e-5
             base_height = -5.0
@@ -283,7 +283,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 1.0
+        sym_coef = 0.5
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''

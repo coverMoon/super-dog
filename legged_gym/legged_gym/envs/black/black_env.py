@@ -662,7 +662,7 @@ class BlackEnv(LeggedRobot):
         swing_penalty = torch.square(feet_height - swing_target)
 
         # 只惩罚低于半正弦波轨迹。允许为了避障而抬得更高。
-        # swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.))
+        # swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.0))
         
         # 6. 组合惩罚
         # 根据相位选择使用哪一种惩罚
@@ -734,6 +734,43 @@ class BlackEnv(LeggedRobot):
     def _reward_roll_orientation(self):
         """ 惩罚 roll 轴倾角"""
         return torch.sum(torch.square(self.projected_gravity[:, 1:2]), dim=1)
+
+    def _reward_orientation(self):
+        """
+        [修改版] 姿态惩罚
+        利用特权观测的高度信息，在地形起伏大（如爬楼梯）时，
+        降低对 Pitch (前后俯仰) 的惩罚，但保持 Roll (左右侧倾) 的严格惩罚。
+        """
+        # 1. 分离投影重力的分量
+        # projected_gravity[:, 0] -> x轴分量，对应 Pitch (前后俯仰)
+        # projected_gravity[:, 1] -> y轴分量，对应 Roll (左右侧倾)
+        pitch_proj = self.projected_gravity[:, 0]
+        roll_proj = self.projected_gravity[:, 1]
+
+        # 2. 利用特权观测计算地形复杂度
+        # self.measured_heights: [num_envs, num_height_points]
+        # 计算采样点高度的标准差 (Standard Deviation)
+        # 平地 std 接近 0；楼梯/斜坡 std 会显著增大
+        terrain_variability = torch.std(self.measured_heights, dim=1)
+
+        # 3. 计算动态权重系数 (Scale Factor)
+        # 地形越复杂 -> 系数越小 -> 惩罚越小
+        # 使用高斯衰减函数：scale = exp(- (std^2) / sigma)
+        # sigma: 敏感度参数。
+        sigma = 0.03 
+        pitch_scale = torch.exp(-torch.square(terrain_variability) / sigma)
+
+        # 限制最小权重，防止机器人完全“躺平”或翻倒也不受惩罚
+        pitch_scale = torch.clip(pitch_scale, min=0.1, max=1.0)
+
+        # 4. 组合奖励
+        # Roll 惩罚 (roll_proj) 保持原样 (甚至可以加权)，因为爬楼梯也不应该侧倾
+        # Pitch 惩罚 (pitch_proj) 乘以动态系数
+        
+        # 注意：这里返回的是正数的惩罚项（在 config 中 scale 是负数）
+        penalty = torch.square(roll_proj) + torch.square(pitch_proj) * pitch_scale
+
+        return penalty
 
     def _reward_stand_still(self):
         # Penalize motion at zero commands
