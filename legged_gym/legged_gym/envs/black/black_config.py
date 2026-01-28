@@ -170,8 +170,8 @@ class BlackCfg(LeggedRobotCfg):
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，断桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.4, 0.2, 0.0, 0.0, 0.0, 0.0, 0.2]
+        # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
+        terrain_proportions = [0.1, 0.1, 0.4, 0.2, 0.2, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
@@ -193,7 +193,7 @@ class BlackCfg(LeggedRobotCfg):
         cycle_time = 0.5
         k_raibert_lin = 0.05
         k_raibert_rot = 0.05
-        clearance_height_target = 0.08
+        clearance_height_target = 0.06
         soft_dof_pos_limit = 0.9
         base_height_target = 0.43
         only_positive_rewards = False
@@ -204,24 +204,24 @@ class BlackCfg(LeggedRobotCfg):
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
             orientation = -3.0
-            dof_acc = -3.2e-7
-            joint_power = -2e-5
+            dof_acc = -4.5e-7
+            joint_power = -1e-4
             base_height = -5.0
             #foot_clearance = -1.0
-            action_rate = -0.4
-            smoothness = -0.02
-            feet_air_time = 2.0
+            action_rate = -0.5
+            smoothness = -0.03
+            feet_air_time = 1.0
             collision = -0.0
             feet_stumble = -0.5
             stand_still = -1.2
-            torques = -0.0
+            torques = -5e-5
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 1.0
             # walk = 2.0
-            hip_pos = -0.3
+            hip_pos = -0.4
             all_joint_pos = -0.003
             foot_slip = -0.5
             lateral_vel_penalty = -2.0
@@ -229,7 +229,7 @@ class BlackCfg(LeggedRobotCfg):
             foot_impact_vel = -0.1
             roll_orientation = -3.0
             foot_clearance_by_phase = -2.0
-            # aibert_heuristic = 1.0
+            raibert_heuristic = 1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -249,7 +249,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-5 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
@@ -283,7 +283,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.5
+        sym_coef = 0.8
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''

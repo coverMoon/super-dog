@@ -499,7 +499,7 @@ class BlackEnv(LeggedRobot):
         is_straight_command = (torch.abs(vy) < 0.1) & (torch.abs(vw) < 0.1)
 
         # 增加分部缩放因子
-        scale = torch.where(is_straight_command, 1.0, 1.0)
+        scale = torch.where(is_straight_command, 1.0, 0.2)
 
         return scale * penalty
 
@@ -653,13 +653,13 @@ class BlackEnv(LeggedRobot):
         # 目标是贴地。只要高度 < 0.02m (2cm) 就不惩罚。
         # 允许脚轻微陷入地面 (负值) 或离地很近，避免与物理引擎的接触解算打架。
         # 逻辑：只有当 feet_height > 0.02 时，(feet_height - 0.02) 才是正数，才会有平方惩罚。
-        stance_penalty = torch.square(torch.clip(feet_height - 0.02, min=0.)) 
+        stance_penalty = torch.abs(torch.clip(feet_height - 0.02, min=0.)) 
         
         # [B] 摆动相 (Swing): 
         # 严格追踪半正弦波轨迹。
         # sin_val 在此处为负数 (-1 ~ 0)，所以 -sin_val 为正数 (0 ~ 1)
         swing_target = -sin_val * self.cfg.rewards.clearance_height_target
-        swing_penalty = torch.square(feet_height - swing_target)
+        swing_penalty = torch.abs(feet_height - swing_target)
 
         # 只惩罚低于半正弦波轨迹。允许为了避障而抬得更高。
         # swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.0))

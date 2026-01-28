@@ -142,7 +142,7 @@ class Terrain:
             # 确保不小于 0.2
             current_step_width = max(current_step_width, 0.2)
 
-            terrain_utils.pyramid_stairs_terrain(terrain, step_width=current_step_width, step_height=step_height, platform_size=3.)
+            terrain_utils.pyramid_stairs_terrain(terrain, step_width=0.3, step_height=step_height, platform_size=3.)
         elif choice < self.proportions[4]:
             num_rectangles = 20
             rectangle_min_size = 1.
@@ -153,7 +153,18 @@ class Terrain:
         elif choice < self.proportions[6]:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
         elif choice < self.proportions[7]:
-            broken_bridge_terrain(terrain, gap_size=bridge_gap_size, platform_length=1.0, bridge_width=bridge_width)
+            # 难度 difficulty (0~1) 可以用来控制间隙大小或者木板宽度            
+            # 让间隙随难度变化： 0.05m -> 0.2m
+            current_gap = 0.1 + 0.2 * difficulty 
+            
+            plank_bridge_terrain(
+                terrain, 
+                gap_size=current_gap,       
+                plank_length=0.4,    # 木板长 40cm
+                plank_width=4.0,     # 木板宽 400cm
+                height=1.0,          # 桥高 1米
+                platform_len=2.0     # 中心平台长 2米   
+            )
         else:
             wall_h = 0.1 + 0.3 * difficulty  # 0.1m 到 0.4m
             high_wall_terrain(terrain, height=wall_h, width=0.3, distance=2.0)
@@ -270,4 +281,53 @@ def high_wall_terrain(terrain, height=1.0, width=0.2, distance=2.0):
     if wall_end > wall_start:
         terrain.height_field_raw[wall_start:wall_end, :] = h_raw
         
+    return terrain
+
+def plank_bridge_terrain(terrain, gap_size=0.15, plank_length=0.5, plank_width=1.0, height=0.5, platform_len=2.0):
+    """
+    生成木板桥地形，并在中心保留出生平台
+    :param terrain: 地形对象
+    :param gap_size: 木板间的空隙 [m]
+    :param plank_length: 木板长度 [m]
+    :param plank_width: 木板宽度 [m]
+    :param height: 木板高度 [m]
+    :param platform_len: 中心出生平台的长度 [m] (机器人出生在中心，必须留平地)
+    """
+    # 1. 坐标转换
+    gap_pixels = int(gap_size / terrain.horizontal_scale)
+    plank_len_pixels = int(plank_length / terrain.horizontal_scale)
+    width_pixels = int(plank_width / terrain.horizontal_scale)
+    height_raw = int(height / terrain.vertical_scale)
+    platform_pixels = int(platform_len / terrain.horizontal_scale)
+    
+    # 2. 初始化深坑背景
+    pit_depth_raw = int(2.0 / terrain.vertical_scale)
+    terrain.height_field_raw[:, :] = -pit_depth_raw
+
+    # 3. 计算桥的Y轴范围 (宽度)
+    mid_y = terrain.width // 2
+    y_start = mid_y - width_pixels // 2
+    y_end = mid_y + width_pixels // 2
+
+    # 4. 铺设木板 (全图铺设)
+    current_x = 0
+    while current_x < terrain.length:
+        plank_end = min(current_x + plank_len_pixels, terrain.length)
+        # 填入木板高度
+        terrain.height_field_raw[current_x:plank_end, y_start:y_end] = height_raw
+        # 跳过木板+间隙
+        current_x += plank_len_pixels + gap_pixels
+
+    # 5. 强制填平中心区域作为出生点
+    mid_x = terrain.length // 2
+    plat_start = mid_x - platform_pixels // 2
+    plat_end = mid_x + platform_pixels // 2
+    
+    # 边界保护
+    plat_start = max(0, plat_start)
+    plat_end = min(terrain.length, plat_end)
+    
+    # 将中心区域强制设为平地高度，覆盖掉可能存在的间隙
+    terrain.height_field_raw[plat_start:plat_end, y_start:y_end] = height_raw
+
     return terrain
