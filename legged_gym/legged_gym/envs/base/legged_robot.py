@@ -239,6 +239,15 @@ class LeggedRobot(BaseTask):
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
+            self.extras["episode"]["cmd_curr_updated"] = getattr(self, "last_cmd_curr_updated", 0.0)
+            self.extras["episode"]["cmd_curr_progressed"] = getattr(self, "last_cmd_curr_progressed", 0.0)
+            self.extras["episode"]["cmd_curr_low_count"] = getattr(self, "last_cmd_curr_low_count", 0)
+            self.extras["episode"]["cmd_curr_high_count"] = getattr(self, "last_cmd_curr_high_count", 0)
+            self.extras["episode"]["cmd_curr_low_tracking"] = getattr(self, "last_cmd_curr_low_tracking", float('nan'))
+            self.extras["episode"]["cmd_curr_high_tracking"] = getattr(self, "last_cmd_curr_high_tracking", float('nan'))
+            self.extras["episode"]["cmd_curr_low_ratio"] = getattr(self, "last_cmd_curr_low_ratio", float('nan'))
+            self.extras["episode"]["cmd_curr_high_ratio"] = getattr(self, "last_cmd_curr_high_ratio", float('nan'))
+            self.extras["episode"]["cmd_curr_threshold_ratio"] = getattr(self, "last_cmd_curr_threshold_ratio", 0.8)
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
@@ -494,7 +503,7 @@ class LeggedRobot(BaseTask):
         self.commands[high_vel_env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0], self.command_ranges["lin_vel_x"][1], (len(high_vel_env_ids), 1), device=self.device).squeeze(1)
 
         # set y commands of high vel envs to zero
-        self.commands[high_vel_env_ids, 1:2] *= (torch.norm(self.commands[high_vel_env_ids, 0:1], dim=1) < 1.0).unsqueeze(1)
+        self.commands[high_vel_env_ids, 1] = 0.0
 
         # set small commands to zero
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
@@ -619,14 +628,47 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): ids of environments being reset
         """
+        self.last_cmd_curr_updated = 0.0
+        self.last_cmd_curr_progressed = 0.0
+        self.last_cmd_curr_low_count = 0
+        self.last_cmd_curr_high_count = 0
+        self.last_cmd_curr_low_tracking = float('nan')
+        self.last_cmd_curr_high_tracking = float('nan')
+        self.last_cmd_curr_low_ratio = float('nan')
+        self.last_cmd_curr_high_ratio = float('nan')
+        self.last_cmd_curr_threshold_ratio = float(getattr(self.cfg.commands, "curriculum_threshold", 0.8))
+
+        if len(env_ids) == 0:
+            return
+
         low_vel_env_ids = (env_ids > (self.num_envs * 0.2))
         high_vel_env_ids = (env_ids < (self.num_envs * 0.2))
         low_vel_env_ids = env_ids[low_vel_env_ids.nonzero(as_tuple=True)]
         high_vel_env_ids = env_ids[high_vel_env_ids.nonzero(as_tuple=True)]
-        # If the tracking reward is above 80% of the maximum, increase the range of commands
-        if (torch.mean(self.episode_sums["tracking_lin_vel"][low_vel_env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]) and (torch.mean(self.episode_sums["tracking_lin_vel"][high_vel_env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]):
+        self.last_cmd_curr_low_count = int(len(low_vel_env_ids))
+        self.last_cmd_curr_high_count = int(len(high_vel_env_ids))
+        self.last_cmd_curr_updated = 1.0
+
+        # Empty subsets produce NaN means and can silently stall curriculum updates.
+        if len(low_vel_env_ids) == 0 or len(high_vel_env_ids) == 0:
+            return
+
+        low_tracking = torch.mean(self.episode_sums["tracking_lin_vel"][low_vel_env_ids]) / self.max_episode_length
+        high_tracking = torch.mean(self.episode_sums["tracking_lin_vel"][high_vel_env_ids]) / self.max_episode_length
+        tracking_scale = abs(self.reward_scales["tracking_lin_vel"])
+        curriculum_threshold = getattr(self.cfg.commands, "curriculum_threshold", 0.8)
+        self.last_cmd_curr_low_tracking = low_tracking.item()
+        self.last_cmd_curr_high_tracking = high_tracking.item()
+        if tracking_scale > 0.0:
+            self.last_cmd_curr_low_ratio = (low_tracking / tracking_scale).item()
+            self.last_cmd_curr_high_ratio = (high_tracking / tracking_scale).item()
+        self.last_cmd_curr_threshold_ratio = float(curriculum_threshold)
+
+        # If tracking reward is high enough for both subsets, increase command range.
+        if torch.isfinite(low_tracking) and torch.isfinite(high_tracking) and low_tracking > curriculum_threshold * tracking_scale and high_tracking > curriculum_threshold * tracking_scale:
             self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.2, -self.cfg.commands.max_curriculum, 0.)
             self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.2, 0., self.cfg.commands.max_curriculum)
+            self.last_cmd_curr_progressed = 1.0
 
 
     def _get_noise_scale_vec(self, cfg):
