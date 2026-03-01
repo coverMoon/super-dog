@@ -784,7 +784,7 @@ class BlackEnv(LeggedRobot):
         vel_error = torch.sum(torch.abs(self.dof_vel), dim=1)
 
         # 组合误差
-        error = pos_error + 0.01 * vel_error
+        error = pos_error + 0.05 * vel_error
     
         return error * is_still
 
@@ -866,10 +866,12 @@ class BlackEnv(LeggedRobot):
         v_lin_body_exp = v_lin_body.unsqueeze(1) # [num_envs, 1, 2]
         v_lin_cmd_exp  = v_lin_cmd.unsqueeze(1)
         
-        offset_linear = v_lin_cmd_exp * (stance_time / 2.0) + k_lin * (v_lin_body_exp - v_lin_cmd_exp)
+        # offset_linear = v_lin_cmd_exp * (stance_time / 2.0) + k_lin * (v_lin_body_exp - v_lin_cmd_exp)
+        offset_linear = v_lin_body_exp * (stance_time / 2.0) + k_lin * (v_lin_body_exp - v_lin_cmd_exp)
 
         # 2. 旋转部分的 Offset
-        offset_rotation = v_cmd_rot * (stance_time / 2.0) + k_rot * (v_rot_body - v_cmd_rot)
+        # offset_rotation = v_cmd_rot * (stance_time / 2.0) + k_rot * (v_rot_body - v_cmd_rot)
+        offset_rotation = v_rot_body * (stance_time / 2.0) + k_rot * (v_rot_body - v_cmd_rot)
 
         raibert_offset = offset_linear + 1.5 * offset_rotation  # shape: (num_envs, 4, 2)
         
@@ -895,7 +897,7 @@ class BlackEnv(LeggedRobot):
         error_sq = torch.sum(torch.square(error_vec), dim=2) # [num_envs, 4]
 
         # 转换为高斯奖励
-        sigma = 0.2
+        sigma = 0.05
         rew = torch.exp(-error_sq / sigma)
 
         # 掩码：只关心摆动腿 (Swing Legs)
@@ -905,7 +907,7 @@ class BlackEnv(LeggedRobot):
         phase = self._get_phase().unsqueeze(1)  # shape: (num_envs, 1)
         offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
         feet_phases = (phase + offsets) % 1.0  # shape: (num_envs, 4)
-        swing_phase_mask = (feet_phases > 0.9).float()
+        swing_phase_mask = (feet_phases > 0.8).float()
         rew = rew * swing_phase_mask
 
         # 平均化：除以摆动腿数量 (加小量防除零)
