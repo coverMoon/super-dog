@@ -24,6 +24,9 @@ class BlackEnv(LeggedRobot):
         hist_len = self.cfg.domain_rand.lag_timesteps + 1 # +1 是为了安全冗余
         self.action_queue = torch.zeros(self.num_envs, hist_len, self.num_actions, device=self.device, requires_grad=False)
         self.lag_buffer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self.last_impact_contacts = torch.zeros(
+            self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False
+        )
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -87,6 +90,7 @@ class BlackEnv(LeggedRobot):
         if self.cfg.domain_rand.delay:
             max_lag = self.cfg.domain_rand.lag_timesteps
             self.lag_buffer[env_ids] = torch.randint(0, max_lag, (len(env_ids),), device=self.device)
+        self.last_impact_contacts[env_ids] = False
 
     def post_physics_step(self):
         """ 物理步后刷新状态 """
@@ -396,79 +400,29 @@ class BlackEnv(LeggedRobot):
         # 1. 对角线同步奖励：FL 和 RR 应该状态一致，FR 和 RL 应该状态一致
         diag1_sync = 1.0 - torch.abs(fl - rr)
         diag2_sync = 1.0 - torch.abs(fr - rl)
+        diag_sync = 0.5 * (diag1_sync + diag2_sync)
         
         # 2. 计算每组对角线的平均触地情况
         s1 = 0.5 * (fl + rr) # 1号对角线 (FL+RR)
         s2 = 0.5 * (fr + rl) # 2号对角线 (FR+RL)
         
-        # 3. 互斥奖励：确保两组对角线不同时触地，也不同时抬起 (s1 + s2 应该接近 1)
-        phase_score = 1.0 - torch.abs((s1 + s2) - 1.0)
-        
-        # 4. 与目标相位匹配
+        # 3. 与目标相位匹配
         stance_mask = self._get_gait_phase().float()
         target_s1, target_s2 = stance_mask[:, 0], stance_mask[:, 1]
         match_s1 = 1.0 - torch.abs(s1 - target_s1)
         match_s2 = 1.0 - torch.abs(s2 - target_s2)
+        phase_match = 0.5 * (match_s1 + match_s2)
+
+        # 相位匹配略重于纯同步，避免学到“四脚一起跳”式同步
+        rew = 0.4 * diag_sync + 0.6 * phase_match
         
-        # 组合各项分数
-        alpha, beta = 0.24, 0.5
-        diag1_score = alpha * diag1_sync + (1 - alpha) * match_s1
-        diag2_score = alpha * diag2_sync + (1 - alpha) * match_s2
-        
-        base_rew = 0.5 * (diag1_score + diag2_score)
-        rew = base_rew * (beta * phase_score)
-        
-        # 只有在有速度指令时才给予奖励 (静止时不需要踏步)
+        # 只有在有速度或转向指令时才给予奖励 (静止时不需要踏步)
         move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
         rew = rew * move_cmd.float()
         
         # 仅在有移动指令时生效
         return rew
     
-    def _reward_walk(self):
-        """
-        [Walk 慢走/四拍步态奖励]
-        强制实现四只脚依次抬起的时序。
-        时序：RL(0.0) -> FL(0.25) -> RR(0.5) -> FR(0.75)
-        """
-        # 1. 获取当前接触状态 (0~1)
-        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
-        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5) # [num_envs, 4]
-        
-        # 2. 获取基础相位 (0~1)
-        phase = self._get_phase() # [num_envs]
-        
-        # 3. 定义四只脚的相位偏移 (Phase Offsets)
-        # 索引: 0->FL, 1->FR, 2->RL, 3->RR
-        # 对应时序: RL=0, FL=0.25, RR=0.5, FR=0.75
-        # 注意：这里的偏移量决定了谁先抬腿
-        offsets = torch.tensor([0.25, 0.75, 0.0, 0.5], device=self.device).unsqueeze(0)
-        
-        # 4. 计算每只脚的目标相位
-        # 扩展 phase 维度以匹配 offsets: [num_envs, 4]
-        feet_phases = (phase.unsqueeze(1) + offsets) % 1.0
-        
-        # 5. 生成目标触地信号 (Target Stance)
-        # 使用 Sin 波生成目标。
-        # Walk 步态的一个难点是 Duty Factor (触地占比)。
-        # 标准 Sin 波 > 0 只有 50% 触地，这对 Walk 来说太快了（那是 Trot）。
-        # Walk 通常需要 75% 的时间触地。
-        # 这里我们修改阈值：Sin > -0.5 视为应当触地 (约 66%~75% 触地时间)
-        
-        sin_val = torch.sin(2 * torch.pi * feet_phases)
-        target_stance = (sin_val > -0.5).float() 
-        
-        # 6. 计算匹配误差
-        # 比较实际触地 (contact_prob) 和 目标触地 (target_stance)
-        match_error = torch.square(contact_prob - target_stance)
-        
-        # 对四只脚的误差求平均
-        rew = 1.0 - torch.mean(match_error, dim=1)
-        
-        # 7. 仅在移动时激活
-        move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
-        
-        return rew * move_cmd.float()
     
     def _reward_foot_slip(self):
         """
@@ -510,41 +464,7 @@ class BlackEnv(LeggedRobot):
         防止动作变形
         """
 
-        return torch.sum(torch.abs(self.dof_pos[:,:] - self.default_dof_pos[:,:]), dim=1)
-    
-    def _reward_lateral_vel_penalty(self):
-        """
-        [横向速度惩罚]
-        指令为前进时惩罚横向速度
-        """
-        v_y = self.base_lin_vel[:, 1]
-
-        # 获取横向移动指令
-        cmd_y = self.commands[:, 1]
-
-        # 判断是否应该直行
-        is_straight_command = torch.abs(cmd_y) < 0.1
-
-        # 计算惩罚
-        penalty = torch.square(v_y) * is_straight_command.float()
-
-        return penalty
-    
-    def _reward_feet_stumble(self):
-        # 1. 获取脚部的接触力 (contact_forces)
-        contact_forces = self.contact_forces[:, self.feet_indices, :2]
-        
-        # 2. 计算水平力的模长 (Magnitude)
-        # norm(dim=2) 计算 sqrt(x^2 + y^2)
-        contact_norm = torch.norm(contact_forces, dim=-1)
-        
-        # 3. 判定逻辑
-        stumble = contact_norm > 8.0
-        
-        # 4. 返回惩罚项
-        # torch.any(dim=1) ：只要四只脚里有任意一只脚触发了阈值，这一帧就算 stumble
-        # .float() 将布尔值转换为 0.0 或 1.0
-        return torch.any(stumble, dim=1).float()
+        return torch.sum(torch.square(self.dof_pos[:,:] - self.default_dof_pos[:,:]), dim=1)
     
     def _reward_feet_spacing(self):
         # 1. 获取脚部世界坐标 (Global Position)
@@ -609,131 +529,92 @@ class BlackEnv(LeggedRobot):
         return penalty * level_scale
     
     def _reward_foot_impact_vel(self):
-        # 判断哪些脚接触地面 (力 > 1N)
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
-        
-        # 获取脚的 Z 轴速度 (绝对值 或 平方)
-        foot_vel_z = self.feet_vel[:, :, 2]
-        
-        # 惩罚：只有在接触地面时，脚的 Z 速度才会被惩罚
-        # 使用平方形式惩罚大的冲击
-        return torch.sum(contact * torch.square(foot_vel_z), dim=1)
-    
-    def _reward_foot_clearance_by_phase(self):
         """
-        [基于相位的动态抬腿奖励]
-        目标：支撑相时目标高度为0 (允许2cm误差)，摆动相时目标高度跟随半正弦波。
-        解决定值高度导致的支撑相冲突问题。
+        只在首次触地时惩罚过大的向下落地速度。
+        小的正常落地速度通过安全阈值过滤，避免把接触后的微小振动也算作冲击。
         """
-        # 1. 获取当前脚的高度 (相对于地面)
-        feet_height = self._get_feet_heights() 
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        first_contact = contact & (~self.last_impact_contacts)
+        self.last_impact_contacts = contact
 
-        # 2. 计算每个脚的相位
-        # 基础相位 (num_envs, 1)
-        phase = self._get_phase().unsqueeze(1)
-        
-        # 针对 Trot 步态设置相位偏移
-        # 0(FL)和3(RR)是一组，1(FR)和2(RL)是一组，相差 0.5 周期
-        offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
-        
-        # 得到每只脚的独立相位 [0, 1)
-        feet_phases = (phase + offsets) % 1.0
-
-        # 3. 计算正弦波值
-        # sin > 0 为支撑相 (Stance)，sin < 0 为摆动相 (Swing)
-        sin_val = torch.sin(2 * torch.pi * feet_phases)
-
-        # 4. 移动指令掩码
-        # 只有在有水平移动指令时才生效 (静止时不强迫抬腿)
-        move_cmd = torch.norm(self.commands[:, :2], dim=1) > 0.1
-
-        # 5. 分阶段计算惩罚
-        
-        # [A] 支撑相 (Stance): 
-        # 目标是贴地。只要高度 < 0.02m (2cm) 就不惩罚。
-        # 允许脚轻微陷入地面 (负值) 或离地很近，避免与物理引擎的接触解算打架。
-        # 逻辑：只有当 feet_height > 0.02 时，(feet_height - 0.02) 才是正数，才会有平方惩罚。
-        stance_penalty = torch.abs(torch.clip(feet_height - 0.02, min=0.)) 
-        
-        # [B] 摆动相 (Swing): 
-        # 严格追踪半正弦波轨迹。
-        # sin_val 在此处为负数 (-1 ~ 0)，所以 -sin_val 为正数 (0 ~ 1)
-        swing_target = -sin_val * self.cfg.rewards.clearance_height_target
-        swing_penalty = torch.abs(feet_height - swing_target)
-
-        # 只惩罚低于半正弦波轨迹。允许为了避障而抬得更高。
-        # swing_penalty = torch.square(torch.clip(feet_height - swing_target, max=0.0))
-        
-        # 6. 组合惩罚
-        # 根据相位选择使用哪一种惩罚
-        error = torch.where(sin_val > 0, stance_penalty, swing_penalty)
-        
-        # 7. 求和并应用移动掩码
-        return torch.sum(error, dim=1) * move_cmd.float()
-
-    # def _reward_foot_clearance_by_phase(self):
-    #     """
-    #     [基于相位的动态抬腿奖励 - 适配 Walk 步态]
-    #     目标：
-    #     1. 支撑相 (Stance): 目标高度为0 (允许微小误差)
-    #     2. 摆动相 (Swing): 目标高度跟随轨迹
-    #     注意：Walk 步态下，摆动相只占周期的 ~25%
-    #     """
-    #     # 1. 获取当前脚的高度 (相对于地面)
-    #     feet_height = self._get_feet_heights() 
-
-    #     # 2. 计算每个脚的相位
-    #     phase = self._get_phase().unsqueeze(1)
-        
-    #     # [关键修改 1] 使用与 Walk 步态一致的 Offsets
-    #     # 顺序: FL, FR, RL, RR -> 对应 RL, FL, RR, FR 抬起顺序
-    #     offsets = torch.tensor([0.25, 0.75, 0.0, 0.5], device=self.device).unsqueeze(0)
-        
-    #     feet_phases = (phase + offsets) % 1.0
-
-    #     # 3. 计算正弦波值
-    #     sin_val = torch.sin(2 * torch.pi * feet_phases)
-
-    #     # 4. 移动指令掩码 (静止时不强制)
-    #     move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
-
-    #     # 5. 分阶段计算惩罚
-        
-    #     # [A] 支撑相 (Stance)
-    #     # Walk 的支撑相很长，当 sin_val > -0.5 时都视为支撑相
-    #     # 目标：贴地 (feet_height < 0.02)
-    #     is_stance = sin_val > -0.5
-    #     stance_penalty = torch.square(torch.clip(feet_height - 0.02, min=0.)) 
-        
-    #     # [B] 摆动相 (Swing)
-    #     # 只有当 sin_val <= -0.5 时才视为摆动相 (处于正弦波底部)
-    #     # 我们需要把 [-1.0, -0.5] 这个区间映射到高度曲线 [0, 1]
-        
-    #     # 归一化摆动进度：将 [-1, -0.5] 映射为 [0, 1] 的某种曲线用于计算目标高度
-    #     # 简单做法：利用 sin_val 的绝对值。
-    #     # 当 sin = -1 (波谷) 时，目标高度最大；当 sin = -0.5 时，目标高度接近 0
-        
-    #     # 计算目标高度曲线
-    #     # (sin_val + 0.5) 在摆动期范围是 [-0.5, 0]
-    #     # 乘以 -2 变为 [1.0, 0]
-    #     swing_scale = (sin_val + 0.5) * -2.0 
-    #     swing_scale = torch.clip(swing_scale, 0., 1.) # 截断保护
-        
-    #     target_height = swing_scale * self.cfg.rewards.clearance_height_target
-        
-    #     # 计算摆动惩罚：低于目标高度才惩罚
-    #     swing_penalty = torch.square(torch.clip(feet_height - target_height, max=0.))
-        
-    #     # 6. 组合惩罚
-    #     # 根据是否是支撑相选择惩罚项
-    #     error = torch.where(is_stance, stance_penalty, swing_penalty)
-        
-    #     # 7. 求和并应用移动掩码
-    #     return torch.sum(error, dim=1) * move_cmd.float()
+        # 只关心向下速度；低于安全阈值的正常落地不惩罚
+        impact_vel = torch.clamp(-self.feet_vel[:, :, 2] - 0.2, min=0.0)
+        return torch.sum(torch.square(impact_vel) * first_contact.float(), dim=1)
     
-    def _reward_roll_orientation(self):
-        """ 惩罚 roll 轴倾角"""
-        return torch.sum(torch.square(self.projected_gravity[:, 1:2]), dim=1)
+    def _reward_foot_clearance(self):
+        """
+        机身坐标系下的最小安全抬脚高度惩罚。
+        只在机器人有运动意图且脚处于离地/摆动状态时，惩罚抬脚不足；
+        对高于目标的抬脚不做惩罚，给越障和恢复动作留出自由度。
+        """
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+
+        footpos_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        footvel_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footpos_translated[:, i, :]
+            )
+            footvel_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footvel_translated[:, i, :]
+            )
+
+        foot_lateral_vel = torch.sqrt(
+            torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)
+        )
+        foot_height_body = footpos_in_body_frame[:, :, 2]
+
+        # 只惩罚低于“最低安全高度”的摆动腿，允许更高抬脚来越障
+        min_clearance_error = torch.relu(
+            self.cfg.rewards.clearance_height_target - foot_height_body
+        )
+
+        # 用软接触概率区分支撑/摆动，减轻 PhysX 接触抖动带来的误判
+        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
+        swing_weight = 1.0 - contact_prob
+
+        # 静止时不强迫抬腿；转向时也保留 clearance 约束
+        move_cmd = (
+            (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+            | (torch.abs(self.commands[:, 2]) > 0.1)
+        ).float().unsqueeze(1)
+
+        penalty = torch.square(min_clearance_error) * foot_lateral_vel * swing_weight * move_cmd
+        return torch.sum(penalty, dim=1)
+
+    def _reward_feet_air_time(self):
+        """
+        以目标步态周期为参考的腾空时间奖励。
+        只在首次落地时结算，鼓励摆动腿完成完整的一步，但不鼓励无限制延长滞空时间。
+        """
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        contact_filt = torch.logical_or(contact, self.last_contacts)
+        self.last_contacts = contact
+
+        self.feet_air_time += self.dt
+
+        target_air_time = self.cfg.rewards.cycle_time * 0.5
+        min_air_time = target_air_time * 0.5
+        first_contact = (self.feet_air_time > min_air_time) * contact_filt
+
+        air_time_error = self.feet_air_time - target_air_time
+        rew_air_time = torch.exp(-torch.square(air_time_error) / 0.01) * first_contact
+
+        move_cmd = (
+            (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+            | (torch.abs(self.commands[:, 2]) > 0.1)
+        )
+        rew_air_time = torch.sum(rew_air_time, dim=1) * move_cmd.float()
+
+        self.feet_air_time *= ~contact_filt
+        return rew_air_time
 
     def _reward_orientation(self):
         """
@@ -787,135 +668,3 @@ class BlackEnv(LeggedRobot):
         error = pos_error + 0.05 * vel_error
     
         return error * is_still
-
-
-    def _reward_raibert_heuristic(self):
-        """
-        [Raibert 式落脚位置奖励]
-        鼓励脚部落在理想位置以稳定步态
-        """
-        
-        # 获取支撑状态
-        # stance_mask: [num_envs, 2]
-        # col 0: 对应FL和RR腿，col 1: 对应FR和RL腿
-        # 1 表示支撑相，0 表示摆动相
-        stance_mask = self._get_gait_phase()
-
-        # 推导四只脚的 is_swing（摆动为1，支撑为0）
-        # 顺序: FL, FR, RL, RR
-        swing_fl = 1.0 - stance_mask[:, 0]
-        swing_fr = 1.0 - stance_mask[:, 1]
-        swing_rl = 1.0 - stance_mask[:, 1]
-        swing_rr = 1.0 - stance_mask[:, 0]
-
-        # 组合为 [num_envs, 4] 
-        is_swing = torch.stack((swing_fl, swing_fr, swing_rl, swing_rr), dim=1)
-
-        # 定义名义站立位置
-        nom_x = 0.2126
-        nom_y = 0.1554
-
-        # 构造四只脚相对于身体中心的默认站位
-        nominal_stance = torch.tensor([
-            [ nom_x,  nom_y],  # FL
-            [ nom_x, -nom_y],  # FR
-            [-nom_x,  nom_y],  # RL
-            [-nom_x, -nom_y],  # RR
-        ], device=self.device).unsqueeze(0).repeat(self.num_envs, 1, 1)  # shape: (num_envs, 4, 2)
-
-        # 计算 Raibert 目标位置
-        # 标准公式：Target = Nominal + v * (T_stance / 2) + k * (v - v_cmd)
-
-        cycle_time = self.cfg.rewards.cycle_time
-        stance_time = cycle_time * 0.5  # 假设一半周期为支撑相
-
-        # 获取基础速度信息
-        # 线性速度 [num_envs, 2]
-        v_lin_body = self.base_lin_vel[:, 0:2]
-        v_lin_cmd = self.commands[:, 0:2]
-
-        # 角速度
-        omega_z = self.base_ang_vel[:, 2]  # shape: (num_envs,)
-        omega_cmd = self.commands[:, 2]  # shape: (num_envs,)
-
-        # 计算旋转引起的切向速度 (v = omega x r)
-        # r 为脚相对于机身中心的向量
-        r_x = nominal_stance[:, :, 0] # shape: (num_envs, 4)
-        r_y = nominal_stance[:, :, 1] # shape: (num_envs, 4)
-        
-        # 实际角速度产生的切向速度 [num_envs, 4, 2]
-        # v_x = -omega_z * r_y
-        # v_y =  omega_z * r_x
-        v_rot_x = -omega_z.unsqueeze(1) * r_y   # shape: (num_envs, 4)
-        v_rot_y =  omega_z.unsqueeze(1) * r_x   # shape: (num_envs, 4)
-        v_rot_body = torch.stack((v_rot_x, v_rot_y), dim=2)  # shape: (num_envs, 4, 2)
-
-        # 指令角速度产生的切向速度 [num_envs, 4, 2]
-        v_cmd_rot_x = -omega_cmd.unsqueeze(1) * r_y
-        v_cmd_rot_y =  omega_cmd.unsqueeze(1) * r_x
-        v_cmd_rot = torch.stack((v_cmd_rot_x, v_cmd_rot_y), dim=2)
-
-
-        # 定义增益 
-        k_lin = self.cfg.rewards.k_raibert_lin        # 原有的增益，用于平动
-        k_rot = self.cfg.rewards.k_raibert_rot
-
-        # 1. 线性部分的 Offset
-        # v_lin_err = v_lin_body - v_lin_cmd
-        # linear_offset = v_lin_body * (T/2) + k_lin * (err)
-        v_lin_body_exp = v_lin_body.unsqueeze(1) # [num_envs, 1, 2]
-        v_lin_cmd_exp  = v_lin_cmd.unsqueeze(1)
-        
-        # offset_linear = v_lin_cmd_exp * (stance_time / 2.0) + k_lin * (v_lin_body_exp - v_lin_cmd_exp)
-        offset_linear = v_lin_body_exp * (stance_time / 2.0) + k_lin * (v_lin_body_exp - v_lin_cmd_exp)
-
-        # 2. 旋转部分的 Offset
-        # offset_rotation = v_cmd_rot * (stance_time / 2.0) + k_rot * (v_rot_body - v_cmd_rot)
-        offset_rotation = v_rot_body * (stance_time / 2.0) + k_rot * (v_rot_body - v_cmd_rot)
-
-        raibert_offset = offset_linear + 1.5 * offset_rotation  # shape: (num_envs, 4, 2)
-        
-        p_desired = nominal_stance + raibert_offset  # shape: (num_envs, 4, 2)
-        
-        # 获取实际脚部位置
-        feet_pos_world = self.feet_pos  # [num_envs, 4, 3]
-        base_pos = self.root_states[:, 0:3].unsqueeze(1)
-        base_quat = self.root_states[:, 3:7]
-
-        # 转换到 Base 坐标系
-        feet_pos_rel = feet_pos_world - base_pos
-        
-        flat_base_quat = base_quat.unsqueeze(1).repeat(1, 4, 1).view(-1, 4)
-        flat_feet_rel = feet_pos_rel.view(-1, 3)
-        flat_feet_local = quat_rotate_inverse(flat_base_quat, flat_feet_rel)
-
-        p_actual = flat_feet_local.view(self.num_envs, 4, 3)[:, :, 0:2]
-
-        # 计算奖励
-        # 计算欧氏距离平方
-        error_vec = p_actual - p_desired
-        error_sq = torch.sum(torch.square(error_vec), dim=2) # [num_envs, 4]
-
-        # 转换为高斯奖励
-        sigma = 0.05
-        rew = torch.exp(-error_sq / sigma)
-
-        # 掩码：只关心摆动腿 (Swing Legs)
-        rew = rew * is_swing.float()
-
-        # ===== 只在摆动相后半部分计算奖励 =====
-        phase = self._get_phase().unsqueeze(1)  # shape: (num_envs, 1)
-        offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
-        feet_phases = (phase + offsets) % 1.0  # shape: (num_envs, 4)
-        swing_phase_mask = (feet_phases > 0.8).float()
-        rew = rew * swing_phase_mask
-
-        # 平均化：除以摆动腿数量 (加小量防除零)
-        num_swing_legs = torch.sum(is_swing, dim=1)
-        final_rew = torch.sum(rew, dim=1) / (num_swing_legs + 1e-5)
-
-        # 判断指令是否移动
-        is_move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
-
-        # 仅在有移动指令时生效
-        return final_rew * is_move_cmd.float()

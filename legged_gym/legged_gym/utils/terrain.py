@@ -112,16 +112,18 @@ class Terrain:
                                 length=self.width_per_env_pixels,
                                 vertical_scale=self.cfg.vertical_scale,
                                 horizontal_scale=self.cfg.horizontal_scale)
-        slope = difficulty * 0.4
-        amplitude = 0.01 + 0.07 * difficulty
+        # Slightly increase non-stair terrain difficulty while keeping
+        # stair-specific geometry unchanged.
+        slope = difficulty * 0.7
+        amplitude = 0.015 + 0.1 * difficulty
         step_height = 0.05 + 0.18 * difficulty
-        discrete_obstacles_height = 0.05 + difficulty * 0.1
-        stepping_stones_size = 1.5 * (1.05 - difficulty)
-        stone_distance = 0.05 if difficulty==0 else 0.1
-        gap_size = 1. * difficulty
-        pit_depth = 1. * difficulty
-        bridge_gap_size = 0.1 + 0.5 * difficulty    # 缺口随难度变大
-        bridge_width = 0.8 - 0.3 * difficulty       # 桥宽随难度变窄
+        discrete_obstacles_height = 0.06 + difficulty * 0.2
+        stepping_stones_size = 1.35 * (1.02 - difficulty)
+        stone_distance = 0.08 if difficulty == 0 else 0.12
+        gap_size = 1.15 * difficulty
+        pit_depth = 1.15 * difficulty
+        bridge_gap_size = 0.12 + 0.55 * difficulty    # 缺口随难度变大
+        bridge_width = 0.75 - 0.3 * difficulty        # 桥宽随难度变窄
         if choice < self.proportions[0]:
             if choice < self.proportions[0]/ 2:
                 slope *= -1
@@ -155,18 +157,18 @@ class Terrain:
         elif choice < self.proportions[7]:
             # 难度 difficulty (0~1) 可以用来控制间隙大小或者木板宽度            
             # 让间隙随难度变化： 0.05m -> 0.2m
-            current_gap = 0.1 + 0.2 * difficulty 
+            current_gap = 0.12 + 0.24 * difficulty 
             
             plank_bridge_terrain(
                 terrain, 
                 gap_size=current_gap,       
                 plank_length=0.4,    # 木板长 40cm
-                plank_width=4.0,     # 木板宽 400cm
-                height=1.0,          # 桥高 1米
+                plank_width=3.6,     # 木板宽 360cm
+                height=0.0,          # 桥高 1米
                 platform_len=2.0     # 中心平台长 2米   
             )
         else:
-            wall_h = 0.1 + 0.3 * difficulty  # 0.1m 到 0.4m
+            wall_h = 0.12 + 0.34 * difficulty  # 0.12m 到 0.46m
             high_wall_terrain(terrain, height=wall_h, width=0.3, distance=2.0)
         
         return terrain

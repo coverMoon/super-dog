@@ -639,8 +639,12 @@ class LeggedRobot(BaseTask):
         self.last_cmd_curr_high_count = 0
         self.last_cmd_curr_low_tracking = float('nan')
         self.last_cmd_curr_high_tracking = float('nan')
+        self.last_cmd_curr_low_ang_tracking = float('nan')
+        self.last_cmd_curr_high_ang_tracking = float('nan')
         self.last_cmd_curr_low_ratio = float('nan')
         self.last_cmd_curr_high_ratio = float('nan')
+        self.last_cmd_curr_low_ang_ratio = float('nan')
+        self.last_cmd_curr_high_ang_ratio = float('nan')
         self.last_cmd_curr_threshold_ratio = float(getattr(self.cfg.commands, "curriculum_threshold", 0.8))
         self.last_cmd_curr_eval_count = 0
 
@@ -663,27 +667,47 @@ class LeggedRobot(BaseTask):
 
         per_env_len = torch.clip(self.episode_length_buf.float(), min=1.0)
         per_env_tracking = self.episode_sums["tracking_lin_vel"] / per_env_len
+        per_env_ang_tracking = self.episode_sums["tracking_ang_vel"] / per_env_len
         low_tracking = torch.mean(per_env_tracking[low_vel_env_ids])
         high_tracking = torch.mean(per_env_tracking[high_vel_env_ids])
+        low_ang_tracking = torch.mean(per_env_ang_tracking[low_vel_env_ids])
+        high_ang_tracking = torch.mean(per_env_ang_tracking[high_vel_env_ids])
         tracking_scale = abs(self.reward_scales["tracking_lin_vel"])
+        ang_tracking_scale = abs(self.reward_scales["tracking_ang_vel"])
         curriculum_threshold = getattr(self.cfg.commands, "curriculum_threshold", 0.8)
         ema_alpha = getattr(self.cfg.commands, "curriculum_ema_alpha", 0.1)
         required_passes = max(1, int(getattr(self.cfg.commands, "curriculum_required_passes", 1)))
         self.last_cmd_curr_low_tracking = low_tracking.item()
         self.last_cmd_curr_high_tracking = high_tracking.item()
+        self.last_cmd_curr_low_ang_tracking = low_ang_tracking.item()
+        self.last_cmd_curr_high_ang_tracking = high_ang_tracking.item()
         if tracking_scale > 0.0:
             self.last_cmd_curr_low_ratio = (low_tracking / tracking_scale).item()
             self.last_cmd_curr_high_ratio = (high_tracking / tracking_scale).item()
+        if ang_tracking_scale > 0.0:
+            self.last_cmd_curr_low_ang_ratio = (low_ang_tracking / ang_tracking_scale).item()
+            self.last_cmd_curr_high_ang_ratio = (high_ang_tracking / ang_tracking_scale).item()
         self.last_cmd_curr_threshold_ratio = float(curriculum_threshold)
 
-        if not torch.isfinite(low_tracking) or not torch.isfinite(high_tracking) or tracking_scale <= 0.0:
+        if (
+            not torch.isfinite(low_tracking)
+            or not torch.isfinite(high_tracking)
+            or not torch.isfinite(low_ang_tracking)
+            or not torch.isfinite(high_ang_tracking)
+            or tracking_scale <= 0.0
+            or ang_tracking_scale <= 0.0
+        ):
             self.cmd_curr_pass_streak = 0
             return
 
         low_ratio = (low_tracking / tracking_scale).item()
         high_ratio = (high_tracking / tracking_scale).item()
-        self.cmd_curr_ema_low = (1.0 - ema_alpha) * self.cmd_curr_ema_low + ema_alpha * low_ratio
-        self.cmd_curr_ema_high = (1.0 - ema_alpha) * self.cmd_curr_ema_high + ema_alpha * high_ratio
+        low_ang_ratio = (low_ang_tracking / ang_tracking_scale).item()
+        high_ang_ratio = (high_ang_tracking / ang_tracking_scale).item()
+        combined_low_ratio = min(low_ratio, low_ang_ratio)
+        combined_high_ratio = min(high_ratio, high_ang_ratio)
+        self.cmd_curr_ema_low = (1.0 - ema_alpha) * self.cmd_curr_ema_low + ema_alpha * combined_low_ratio
+        self.cmd_curr_ema_high = (1.0 - ema_alpha) * self.cmd_curr_ema_high + ema_alpha * combined_high_ratio
 
         if self.cmd_curr_ema_low > curriculum_threshold and self.cmd_curr_ema_high > curriculum_threshold:
             self.cmd_curr_pass_streak += 1
@@ -1323,7 +1347,7 @@ class LeggedRobot(BaseTask):
         self.feet_air_time *= ~contact_filt
         return rew_airTime
     
-    def _reward_stumble(self):
+    def _reward_feet_stumble(self):
         # Penalize feet hitting vertical surfaces
         return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
              5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)

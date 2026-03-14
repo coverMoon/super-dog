@@ -174,12 +174,12 @@ class BlackCfg(LeggedRobotCfg):
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.4, 0.2, 0.2, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.1, 0.2, 0.2, 0.2, 0.0, 0.0, 0.2, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 8192
+        num_envs = 3800
         num_one_step_observations = 45
         num_observations = num_one_step_observations * 6
 
@@ -194,9 +194,9 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        k_raibert_lin = 0.03
-        k_raibert_rot = 0.05
-        clearance_height_target = 0.08
+        # 机身坐标系下摆动腿的最低安全高度（单位：m，向下为负）
+        # 默认站立脚高约为 -0.412m，这里取略高的 -0.38m 作为防拖脚阈值
+        clearance_height_target = -0.38
         soft_dof_pos_limit = 0.9
         base_height_target = 0.43
         only_positive_rewards = False
@@ -210,29 +210,24 @@ class BlackCfg(LeggedRobotCfg):
             dof_acc = -5e-7
             joint_power = -1e-6
             base_height = -5.0
-            #foot_clearance = -1.0
+            foot_clearance = -10.0
             action_rate = -0.05
             smoothness = -0.02
-            feet_air_time = 1.0
+            feet_air_time = 0.4
             collision = -0.0
             feet_stumble = -0.5
-            stand_still = -1.4
+            stand_still = -1.0
             torques = -1e-6
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 1.0
-            # walk = 2.0
             hip_pos = -0.8 
-            all_joint_pos = -0.003
+            all_joint_pos = -0.001
             foot_slip = -0.5
-            lateral_vel_penalty = -2.0
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
-            roll_orientation = -3.0
-            foot_clearance_by_phase = -2.0
-            raibert_heuristic = 0.5
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -286,7 +281,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.8
+        sym_coef = 0.2
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''

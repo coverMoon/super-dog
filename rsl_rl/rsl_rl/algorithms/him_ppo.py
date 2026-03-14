@@ -163,9 +163,10 @@ class HIMPPO:
                 sym_loss = 0 
                 if self.sym_loss:
                     mirror_obs = torch.matmul(obs_batch,self.obs_perm_mat)
-                    mirror_act = self.actor_critic.act(mirror_obs)
-                    m_mirror_act = torch.matmul(mirror_act,self.act_perm_mat)#将对称的观察的动作映射到原动作空间
-                    sym_loss = (mu_batch-m_mirror_act).pow(2).mean()
+                    self.actor_critic.update_distribution(mirror_obs)
+                    mirror_mu = self.actor_critic.action_mean
+                    m_mirror_mu = torch.matmul(mirror_mu,self.act_perm_mat)#将对称观察下的动作均值映射到原动作空间
+                    sym_loss = (mu_batch-m_mirror_mu).pow(2).mean()
                     # print("shapes:",obs_batch.shape,mirror_obs.shape,mirror_act.shape,m_mirror_act.shape,mu_batch.shape) 
 
                 # KL
