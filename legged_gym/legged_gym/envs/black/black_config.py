@@ -78,8 +78,10 @@ class BlackCfg(LeggedRobotCfg):
 
     class commands:
         curriculum = True
-        max_curriculum = 3.0
+        max_curriculum = 2.0
         curriculum_threshold = 0.7
+        curriculum_ema_alpha = 0.2
+        curriculum_required_passes = 3
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
@@ -192,7 +194,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        k_raibert_lin = 0.05
+        k_raibert_lin = 0.03
         k_raibert_rot = 0.05
         clearance_height_target = 0.08
         soft_dof_pos_limit = 0.9
@@ -206,7 +208,7 @@ class BlackCfg(LeggedRobotCfg):
             ang_vel_xy = -0.05
             orientation = -3.0
             dof_acc = -5e-7
-            joint_power = -5e-7
+            joint_power = -1e-6
             base_height = -5.0
             #foot_clearance = -1.0
             action_rate = -0.05
@@ -215,14 +217,14 @@ class BlackCfg(LeggedRobotCfg):
             collision = -0.0
             feet_stumble = -0.5
             stand_still = -1.4
-            torques = -5e-7
+            torques = -1e-6
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 1.0
             # walk = 2.0
-            hip_pos = -0.5 
+            hip_pos = -0.8 
             all_joint_pos = -0.003
             foot_slip = -0.5
             lateral_vel_penalty = -2.0
@@ -230,7 +232,7 @@ class BlackCfg(LeggedRobotCfg):
             foot_impact_vel = -0.1
             roll_orientation = -3.0
             foot_clearance_by_phase = -2.0
-            raibert_heuristic = 1.0
+            raibert_heuristic = 0.5
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:

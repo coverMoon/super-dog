@@ -71,6 +71,8 @@ class LeggedRobotCfg(BaseConfig):
         curriculum = True
         max_curriculum = 3.0
         curriculum_threshold = 0.8
+        curriculum_ema_alpha = 0.1
+        curriculum_required_passes = 1
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
