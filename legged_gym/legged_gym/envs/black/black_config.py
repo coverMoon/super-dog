@@ -179,7 +179,7 @@ class BlackCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class env(LeggedRobotCfg.env):
-        num_envs = 3800
+        num_envs = 4096
         num_one_step_observations = 45
         num_observations = num_one_step_observations * 6
 
@@ -247,7 +247,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-5 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99

@@ -102,53 +102,71 @@ class HIMOnPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
-        for it in range(self.current_learning_iteration, tot_iter):
-            start = time.time()
-            # Rollout
-            with torch.inference_mode():
-                for i in range(self.num_steps_per_env):
-                    actions = self.alg.act(obs, critic_obs)
-                    obs, privileged_obs, rewards, dones, infos, termination_ids, termination_privileged_obs = self.env.step(actions)
-                    critic_obs = privileged_obs if privileged_obs is not None else obs
-                    obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
-                    termination_ids = termination_ids.to(self.device)
-                    termination_privileged_obs = termination_privileged_obs.to(self.device)
+        next_iteration = self.current_learning_iteration
+        try:
+            for it in range(self.current_learning_iteration, tot_iter):
+                start = time.time()
+                # Rollout
+                with torch.inference_mode():
+                    for i in range(self.num_steps_per_env):
+                        actions = self.alg.act(obs, critic_obs)
+                        obs, privileged_obs, rewards, dones, infos, termination_ids, termination_privileged_obs = self.env.step(actions)
+                        critic_obs = privileged_obs if privileged_obs is not None else obs
+                        obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
+                        termination_ids = termination_ids.to(self.device)
+                        termination_privileged_obs = termination_privileged_obs.to(self.device)
 
-                    next_critic_obs = critic_obs.clone().detach()
-                    next_critic_obs[termination_ids] = termination_privileged_obs.clone().detach()
+                        next_critic_obs = critic_obs.clone().detach()
+                        next_critic_obs[termination_ids] = termination_privileged_obs.clone().detach()
 
-                    self.alg.process_env_step(rewards, dones, infos, next_critic_obs)
-                
-                    if self.log_dir is not None:
-                        # Book keeping
-                        if 'episode' in infos:
-                            ep_infos.append(infos['episode'])
-                        cur_reward_sum += rewards
-                        cur_episode_length += 1
-                        new_ids = (dones > 0).nonzero(as_tuple=False)
-                        rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
-                        lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
-                        cur_reward_sum[new_ids] = 0
-                        cur_episode_length[new_ids] = 0
+                        self.alg.process_env_step(rewards, dones, infos, next_critic_obs)
+                    
+                        if self.log_dir is not None:
+                            # Book keeping
+                            if 'episode' in infos:
+                                ep_infos.append(infos['episode'])
+                            cur_reward_sum += rewards
+                            cur_episode_length += 1
+                            new_ids = (dones > 0).nonzero(as_tuple=False)
+                            rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
+                            lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
+                            cur_reward_sum[new_ids] = 0
+                            cur_episode_length[new_ids] = 0
 
+                    stop = time.time()
+                    collection_time = stop - start
+
+                    # Learning step
+                    start = stop
+                    self.alg.compute_returns(critic_obs)
+                    
+                mean_value_loss, mean_surrogate_loss, mean_estimation_loss, mean_swap_loss, mean_sys_loss = self.alg.update()
                 stop = time.time()
-                collection_time = stop - start
+                learn_time = stop - start
+                if self.log_dir is not None:
+                    self.log(locals())
 
-                # Learning step
-                start = stop
-                self.alg.compute_returns(critic_obs)
-                
-            mean_value_loss, mean_surrogate_loss, mean_estimation_loss, mean_swap_loss, mean_sys_loss = self.alg.update()
-            stop = time.time()
-            learn_time = stop - start
+                next_iteration = it + 1
+                self.current_learning_iteration = next_iteration
+                if it % self.save_interval == 0:
+                    self.save(
+                        os.path.join(self.log_dir, 'model_{}.pt'.format(next_iteration)),
+                        iteration=next_iteration
+                    )
+                ep_infos.clear()
+        except KeyboardInterrupt:
+            self.current_learning_iteration = next_iteration
             if self.log_dir is not None:
-                self.log(locals())
-            if it % self.save_interval == 0:
-                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
-            ep_infos.clear()
-        
-        self.current_learning_iteration += num_learning_iterations
-        self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
+                interrupt_path = os.path.join(self.log_dir, 'interrupt_model_{}.pt'.format(next_iteration))
+                self.save(interrupt_path, iteration=next_iteration)
+                print(f"Saved interrupt checkpoint to: {interrupt_path}")
+            raise
+
+        self.current_learning_iteration = next_iteration
+        self.save(
+            os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)),
+            iteration=self.current_learning_iteration
+        )
 
     def log(self, locs, width=80, pad=35):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
@@ -228,12 +246,14 @@ class HIMOnPolicyRunner:
                                locs['num_learning_iterations'] - locs['it']):.1f}s\n""")
         print(log_string)
 
-    def save(self, path, infos=None):
+    def save(self, path, infos=None, iteration=None):
+        if iteration is None:
+            iteration = self.current_learning_iteration
         torch.save({
             'model_state_dict': self.alg.actor_critic.state_dict(),
             'optimizer_state_dict': self.alg.optimizer.state_dict(),
             'estimator_optimizer_state_dict': self.alg.actor_critic.estimator.optimizer.state_dict(),
-            'iter': self.current_learning_iteration,
+            'iter': iteration,
             'infos': infos,
             }, path)
 
