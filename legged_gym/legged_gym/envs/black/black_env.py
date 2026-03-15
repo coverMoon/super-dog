@@ -27,6 +27,7 @@ class BlackEnv(LeggedRobot):
         self.last_impact_contacts = torch.zeros(
             self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False
         )
+        self.stuck_time = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -91,6 +92,7 @@ class BlackEnv(LeggedRobot):
             max_lag = self.cfg.domain_rand.lag_timesteps
             self.lag_buffer[env_ids] = torch.randint(0, max_lag, (len(env_ids),), device=self.device)
         self.last_impact_contacts[env_ids] = False
+        self.stuck_time[env_ids] = 0.0
 
     def post_physics_step(self):
         """ 物理步后刷新状态 """
@@ -99,6 +101,37 @@ class BlackEnv(LeggedRobot):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         return env_ids, termination_privileged_obs
+
+    def check_termination(self):
+        """在默认接触/超时终止基础上，补充桥坑内卡死检测。"""
+        super().check_termination()
+
+        move_cmd_norm = torch.norm(self.commands[:, :2], dim=1)
+        move_cmd = move_cmd_norm > self.cfg.env.stuck_command_threshold
+        cmd_dir = self.commands[:, :2] / torch.clamp(move_cmd_norm.unsqueeze(1), min=1e-6)
+        progress_speed = torch.sum(self.base_lin_vel[:, :2] * cmd_dir, dim=1)
+        stalled = progress_speed < self.cfg.env.stuck_vel_threshold
+
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footpos_translated[:, i, :]
+            )
+
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        low_foot = footpos_in_body_frame[:, :, 2] < (
+            self.cfg.rewards.clearance_height_target - self.cfg.env.stuck_foot_height_margin
+        )
+        trapped_foot = torch.any(contact & low_foot, dim=1)
+
+        grace_done = (self.episode_length_buf.float() * self.dt) > self.cfg.env.stuck_grace_s
+        stuck_mask = move_cmd & stalled & trapped_foot & grace_done
+
+        self.stuck_time = torch.where(stuck_mask, self.stuck_time + self.dt, torch.zeros_like(self.stuck_time))
+        self.reset_buf |= self.stuck_time > self.cfg.env.stuck_timeout_s
     
     # def _post_physics_step_callback(self):
     #     """ Callback called before computing terminations, rewards, and observations
@@ -433,6 +466,18 @@ class BlackEnv(LeggedRobot):
         foot_speed_norm = torch.norm(self.rigid_state[:, self.feet_indices, 7:9], dim=2)
         rew = torch.sqrt(foot_speed_norm) * contact
         return torch.sum(rew, dim=1)
+
+    def _reward_progress(self):
+        """
+        轻量的命令方向进展奖励。
+        只鼓励沿当前平移指令方向的正向速度，避免台阶前“停住保平衡”。
+        """
+        cmd_xy = self.commands[:, :2]
+        cmd_norm = torch.norm(cmd_xy, dim=1)
+        move_cmd = cmd_norm > 0.1
+        cmd_dir = cmd_xy / torch.clamp(cmd_norm.unsqueeze(1), min=1e-6)
+        progress_speed = torch.sum(self.base_lin_vel[:, :2] * cmd_dir, dim=1)
+        return torch.relu(progress_speed) * move_cmd.float()
     
     def _reward_hip_pos(self):
         """ 

@@ -72,16 +72,16 @@ class BlackCfg(LeggedRobotCfg):
         name = "black"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base", "thigh"]
+        terminate_after_contacts_on = ["base"]
         privileged_contacts_on = ["base", "thigh", "calf"]
         self_collisions = 1 # 1=disable
 
     class commands:
         curriculum = True
         max_curriculum = 2.0
-        curriculum_threshold = 0.7
-        curriculum_ema_alpha = 0.2
-        curriculum_required_passes = 3
+        curriculum_threshold = 0.65
+        curriculum_ema_alpha = 0.4
+        curriculum_required_passes = 2
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
@@ -99,45 +99,45 @@ class BlackCfg(LeggedRobotCfg):
 
     class domain_rand:
         randomize_payload_mass = True
-        payload_mass_range = [-2, 3]
+        payload_mass_range = [-1.0, 2.0]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.08, 0.08]
+        com_displacement_range = [-0.04, 0.04]
 
         randomize_link_mass = True
-        link_mass_range = [0.75, 1.25]
+        link_mass_range = [0.9, 1.1]
         
         randomize_friction = True
-        friction_range = [0.2, 1.5]
+        friction_range = [0.4, 1.25]
         
         randomize_restitution = False
         restitution_range = [0., 1.0]
         
         randomize_motor_strength = True
-        motor_strength_range = [0.75, 1.25]
+        motor_strength_range = [0.9, 1.1]
         
         randomize_kp = True
-        kp_range = [0.8, 1.2]
+        kp_range = [0.9, 1.1]
         
         randomize_kd = True
-        kd_range = [0.8, 1.2]
+        kd_range = [0.9, 1.1]
         
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
         
-        randomize_inertia = True
+        randomize_inertia = False
         inertia_range = [0.5, 1.5]
 
-        disturbance = True
+        disturbance = False
         disturbance_range = [-30.0, 30.0]
         disturbance_interval = 8
         
-        push_robots = True
+        push_robots = False
         push_interval_s = 25
         max_push_vel_xy = 2.0
 
         # [修改] 延迟设置
-        delay = True
+        delay = False
         # 延迟步数范围
         lag_timesteps = 3 
         
@@ -172,9 +172,9 @@ class BlackCfg(LeggedRobotCfg):
         terrain_width = 8.
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
-        # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        # 地形类型：[光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.2, 0.2, 0.2, 0.0, 0.0, 0.2, 0.0]
+        # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯下，楼梯上，乱石，梅花桩，沟壑，木板桥，高墙]
+        # 当前混合地形分支中剥离断桥，避免与下楼梯在盲策略上产生冲突。
+        terrain_proportions = [0.1, 0.1, 0.1, 0.25, 0.25, 0.2, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
@@ -191,6 +191,11 @@ class BlackCfg(LeggedRobotCfg):
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
         episode_length_s = 20 # episode length in seconds
+        stuck_timeout_s = 1.5
+        stuck_vel_threshold = 0.05
+        stuck_foot_height_margin = 0.12
+        stuck_command_threshold = 0.2
+        stuck_grace_s = 1.0
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
@@ -206,15 +211,15 @@ class BlackCfg(LeggedRobotCfg):
             tracking_ang_vel = 1.0
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -3.0
+            orientation = -2.0
             dof_acc = -5e-7
             joint_power = -1e-6
-            base_height = -5.0
-            foot_clearance = -10.0
+            base_height = -2.0
+            foot_clearance = -3.0
             action_rate = -0.05
             smoothness = -0.02
             feet_air_time = 0.4
-            collision = -0.0
+            collision = -0.05
             feet_stumble = -0.5
             stand_still = -1.0
             torques = -1e-6
@@ -225,9 +230,10 @@ class BlackCfg(LeggedRobotCfg):
             trot = 1.0
             hip_pos = -0.8 
             all_joint_pos = -0.001
-            foot_slip = -0.5
+            foot_slip = -0.3
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
+            progress = 0.3
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -248,7 +254,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 1.e-5 #5.e-4
+        learning_rate = 1.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
@@ -286,5 +292,5 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_black_dog'
-        max_iterations=1000
+        max_iterations=3000
          

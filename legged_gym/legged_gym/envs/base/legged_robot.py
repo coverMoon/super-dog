@@ -248,11 +248,11 @@ class LeggedRobot(BaseTask):
             # self.extras["episode"]["cmd_curr_high_tracking"] = getattr(self, "last_cmd_curr_high_tracking", float('nan'))
             # self.extras["episode"]["cmd_curr_low_ratio"] = getattr(self, "last_cmd_curr_low_ratio", float('nan'))
             # self.extras["episode"]["cmd_curr_high_ratio"] = getattr(self, "last_cmd_curr_high_ratio", float('nan'))
-            # self.extras["episode"]["cmd_curr_low_ratio_ema"] = getattr(self, "cmd_curr_ema_low", float('nan'))
-            # self.extras["episode"]["cmd_curr_high_ratio_ema"] = getattr(self, "cmd_curr_ema_high", float('nan'))
-            # self.extras["episode"]["cmd_curr_pass_streak"] = getattr(self, "cmd_curr_pass_streak", 0)
+            self.extras["episode"]["cmd_curr_low_ratio_ema"] = getattr(self, "cmd_curr_ema_low", float('nan'))
+            self.extras["episode"]["cmd_curr_high_ratio_ema"] = getattr(self, "cmd_curr_ema_high", float('nan'))
+            self.extras["episode"]["cmd_curr_pass_streak"] = getattr(self, "cmd_curr_pass_streak", 0)
             # self.extras["episode"]["cmd_curr_required_passes"] = getattr(self.cfg.commands, "curriculum_required_passes", 1)
-            # self.extras["episode"]["cmd_curr_threshold_ratio"] = getattr(self, "last_cmd_curr_threshold_ratio", 0.8)
+            self.extras["episode"]["cmd_curr_threshold_ratio"] = getattr(self, "last_cmd_curr_threshold_ratio", 0.8)
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf

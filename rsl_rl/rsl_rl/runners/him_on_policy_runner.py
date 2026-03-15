@@ -150,14 +150,14 @@ class HIMOnPolicyRunner:
                 self.current_learning_iteration = next_iteration
                 if it % self.save_interval == 0:
                     self.save(
-                        os.path.join(self.log_dir, 'model_{}.pt'.format(next_iteration)),
+                        os.path.join(self.log_dir, 'model_{}.pt'.format(it)),
                         iteration=next_iteration
                     )
                 ep_infos.clear()
         except KeyboardInterrupt:
             self.current_learning_iteration = next_iteration
             if self.log_dir is not None:
-                interrupt_path = os.path.join(self.log_dir, 'interrupt_model_{}.pt'.format(next_iteration))
+                interrupt_path = os.path.join(self.log_dir, 'interrupt_model_{}.pt'.format(max(next_iteration - 1, 0)))
                 self.save(interrupt_path, iteration=next_iteration)
                 print(f"Saved interrupt checkpoint to: {interrupt_path}")
             raise
@@ -206,7 +206,7 @@ class HIMOnPolicyRunner:
             self.writer.add_scalar('Train/mean_reward/time', statistics.mean(locs['rewbuffer']), self.tot_time)
             self.writer.add_scalar('Train/mean_episode_length/time', statistics.mean(locs['lenbuffer']), self.tot_time)
 
-        str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
+        str = f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} \033[0m "
 
         if len(locs['rewbuffer']) > 0:
             log_string = (f"""{'#' * width}\n"""

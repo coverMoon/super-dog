@@ -24,9 +24,9 @@ def main():
         help="目标 iter；不传则默认从文件名 model_XXXX.pt 自动推断",
     )
     parser.add_argument(
-        "--no-backup",
+        "--save-backup",
         action="store_true",
-        help="不自动生成 .bak 备份文件",
+        help="自动生成 .bak 备份文件",
     )
     args = parser.parse_args()
 
@@ -42,7 +42,7 @@ def main():
     print(f"原 iter: {old_iter}")
     print(f"目标 iter: {target_iter}")
 
-    if not args.no_backup:
+    if  args.save_backup:
         backup_path = checkpoint_path + ".bak"
         if not os.path.exists(backup_path):
             shutil.copy2(checkpoint_path, backup_path)

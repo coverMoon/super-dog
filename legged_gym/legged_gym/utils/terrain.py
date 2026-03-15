@@ -125,14 +125,16 @@ class Terrain:
         bridge_gap_size = 0.12 + 0.55 * difficulty    # 缺口随难度变大
         bridge_width = 0.75 - 0.3 * difficulty        # 桥宽随难度变窄
         if choice < self.proportions[0]:
-            if choice < self.proportions[0]/ 2:
+            terrain.height_field_raw[:, :] = 0
+        elif choice < self.proportions[1]:
+            if choice < (self.proportions[0] + self.proportions[1]) / 2:
                 slope *= -1
             terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.)
-        elif choice < self.proportions[1]:
+        elif choice < self.proportions[2]:
             terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.)
             terrain_utils.random_uniform_terrain(terrain, min_height=-amplitude, max_height=amplitude, step=0.005, downsampled_scale=0.2)
-        elif choice < self.proportions[3]:
-            if choice<self.proportions[2]:
+        elif choice < self.proportions[4]:
+            if choice < self.proportions[3]:
                 step_height *= -1
 
             # 楼梯宽度的课程学习逻辑
@@ -144,28 +146,50 @@ class Terrain:
             # 确保不小于 0.2
             current_step_width = max(current_step_width, 0.2)
 
-            terrain_utils.pyramid_stairs_terrain(terrain, step_width=0.3, step_height=step_height, platform_size=3.)
-        elif choice < self.proportions[4]:
+            terrain_utils.pyramid_stairs_terrain(
+                terrain,
+                step_width=current_step_width,
+                step_height=step_height,
+                platform_size=3.,
+            )
+        elif choice < self.proportions[5]:
             num_rectangles = 20
             rectangle_min_size = 1.
             rectangle_max_size = 2.
             terrain_utils.discrete_obstacles_terrain(terrain, discrete_obstacles_height, rectangle_min_size, rectangle_max_size, num_rectangles, platform_size=3.)
-        elif choice < self.proportions[5]:
-            terrain_utils.stepping_stones_terrain(terrain, stone_size=stepping_stones_size, stone_distance=stone_distance, max_height=0., platform_size=4.)
         elif choice < self.proportions[6]:
-            gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
+            terrain_utils.stepping_stones_terrain(terrain, stone_size=stepping_stones_size, stone_distance=stone_distance, max_height=0., platform_size=4.)
         elif choice < self.proportions[7]:
-            # 难度 difficulty (0~1) 可以用来控制间隙大小或者木板宽度            
-            # 让间隙随难度变化： 0.05m -> 0.2m
-            current_gap = 0.12 + 0.24 * difficulty 
-            
+            gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
+        elif choice < self.proportions[8]:
+            bridge_gap_options = getattr(self.cfg, "bridge_gap_options", None)
+            bridge_plank_length_options = getattr(self.cfg, "bridge_plank_length_options", None)
+            bridge_pit_depth_options = getattr(self.cfg, "bridge_pit_depth_options", None)
+
+            if bridge_gap_options and bridge_plank_length_options:
+                num_bridge_levels = min(len(bridge_gap_options), len(bridge_plank_length_options))
+                bridge_idx = min(int(difficulty * num_bridge_levels), num_bridge_levels - 1)
+                current_gap = bridge_gap_options[bridge_idx]
+                current_plank_length = bridge_plank_length_options[bridge_idx]
+                current_pit_depth = (
+                    bridge_pit_depth_options[bridge_idx]
+                    if bridge_pit_depth_options and bridge_idx < len(bridge_pit_depth_options)
+                    else 2.0
+                )
+            else:
+                # 默认连续桥课程，兼容原 black 任务
+                current_gap = 0.12 + 0.24 * difficulty
+                current_plank_length = 0.4
+                current_pit_depth = 2.0
+
             plank_bridge_terrain(
-                terrain, 
-                gap_size=current_gap,       
-                plank_length=0.4,    # 木板长 40cm
-                plank_width=3.6,     # 木板宽 360cm
-                height=0.0,          # 桥高 1米
-                platform_len=2.0     # 中心平台长 2米   
+                terrain,
+                gap_size=current_gap,
+                plank_length=current_plank_length,
+                plank_width=getattr(self.cfg, "bridge_plank_width", 3.6),
+                height=getattr(self.cfg, "bridge_height", 0.0),
+                platform_len=getattr(self.cfg, "bridge_platform_len", 2.0),
+                pit_depth=current_pit_depth,
             )
         else:
             wall_h = 0.12 + 0.34 * difficulty  # 0.12m 到 0.46m
@@ -285,7 +309,15 @@ def high_wall_terrain(terrain, height=1.0, width=0.2, distance=2.0):
         
     return terrain
 
-def plank_bridge_terrain(terrain, gap_size=0.15, plank_length=0.5, plank_width=1.0, height=0.5, platform_len=2.0):
+def plank_bridge_terrain(
+    terrain,
+    gap_size=0.15,
+    plank_length=0.5,
+    plank_width=1.0,
+    height=0.5,
+    platform_len=2.0,
+    pit_depth=2.0,
+):
     """
     生成木板桥地形，并在中心保留出生平台
     :param terrain: 地形对象
@@ -303,7 +335,7 @@ def plank_bridge_terrain(terrain, gap_size=0.15, plank_length=0.5, plank_width=1
     platform_pixels = int(platform_len / terrain.horizontal_scale)
     
     # 2. 初始化深坑背景
-    pit_depth_raw = int(2.0 / terrain.vertical_scale)
+    pit_depth_raw = int(pit_depth / terrain.vertical_scale)
     terrain.height_field_raw[:, :] = -pit_depth_raw
 
     # 3. 计算桥的Y轴范围 (宽度)
