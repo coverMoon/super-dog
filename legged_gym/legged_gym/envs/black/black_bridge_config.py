@@ -10,10 +10,10 @@ class BlackBridgeCfg(BlackCfg):
         curriculum_required_passes = 2
 
         class ranges(BlackCfg.commands.ranges):
-            lin_vel_x = [0.3, 1.0]
-            lin_vel_y = [-0.1, 0.1]
-            ang_vel_yaw = [-0.2, 0.2]
-            heading = [-0.2, 0.2]
+            lin_vel_x = [-1.0, 1.0]
+            lin_vel_y = [-0.5, 0.5]
+            ang_vel_yaw = [-2.0, 2.0]
+            heading = [-2.0, 2.0]
 
     class terrain(BlackCfg.terrain):
         # flat, smooth slope, rough slope, stairs down, stairs up, discrete, stones, gap, bridge, wall
@@ -39,12 +39,12 @@ class BlackBridgeCfg(BlackCfg):
     class rewards(BlackCfg.rewards):
         class scales(BlackCfg.rewards.scales):
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 0.5
+            tracking_ang_vel = 1.0
             orientation = -1.5
             base_height = -1.0
             foot_clearance = -2.0
             gap_clearance = 8.0
-            action_rate = -0.02
+            action_rate = -0.025
             smoothness = -0.01
             feet_air_time = 0.8
             collision = -0.03
@@ -53,6 +53,7 @@ class BlackBridgeCfg(BlackCfg):
             progress = 0.5
             collision = -0.01
             dof_acc = -1e-7
+            stand_still = -2.0
 
 
 class BlackBridgeCfgPPO(BlackCfgPPO):

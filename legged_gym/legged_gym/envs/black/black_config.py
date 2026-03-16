@@ -99,28 +99,28 @@ class BlackCfg(LeggedRobotCfg):
 
     class domain_rand:
         randomize_payload_mass = True
-        payload_mass_range = [-1.0, 2.0]
+        payload_mass_range = [-2.0, 3.0]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.04, 0.04]
+        com_displacement_range = [-0.05, 0.05]
 
         randomize_link_mass = True
-        link_mass_range = [0.9, 1.1]
+        link_mass_range = [0.85, 1.25]
         
         randomize_friction = True
-        friction_range = [0.4, 1.25]
+        friction_range = [0.3, 1.35]
         
         randomize_restitution = False
         restitution_range = [0., 1.0]
         
         randomize_motor_strength = True
-        motor_strength_range = [0.9, 1.1]
+        motor_strength_range = [0.8, 1.2]
         
         randomize_kp = True
-        kp_range = [0.9, 1.1]
+        kp_range = [0.85, 1.15]
         
         randomize_kd = True
-        kd_range = [0.9, 1.1]
+        kd_range = [0.85, 1.15]
         
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
@@ -128,16 +128,16 @@ class BlackCfg(LeggedRobotCfg):
         randomize_inertia = False
         inertia_range = [0.5, 1.5]
 
-        disturbance = False
+        disturbance = True
         disturbance_range = [-30.0, 30.0]
         disturbance_interval = 8
         
-        push_robots = False
-        push_interval_s = 25
-        max_push_vel_xy = 2.0
+        push_robots = True
+        push_interval_s = 30
+        max_push_vel_xy = 2.5
 
         # [修改] 延迟设置
-        delay = False
+        delay = True
         # 延迟步数范围
         lag_timesteps = 3 
         
