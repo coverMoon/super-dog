@@ -9,6 +9,19 @@ from legged_gym.utils.math import quat_apply_yaw
 class BlackBridgeEnv(BlackEnv):
     """Bridge-focused variant of the Black environment."""
 
+    def _init_buffers(self):
+        super()._init_buffers()
+        self.prev_base_lin_vel = self.base_lin_vel.clone()
+
+    def reset_idx(self, env_ids):
+        super().reset_idx(env_ids)
+        self.prev_base_lin_vel[env_ids] = self.base_lin_vel[env_ids]
+
+    def post_physics_step(self):
+        env_ids, termination_privileged_obs = super().post_physics_step()
+        self.prev_base_lin_vel[:] = self.base_lin_vel[:]
+        return env_ids, termination_privileged_obs
+
     def _sample_terrain_height_at_points(self, points):
         """Sample terrain height at arbitrary world-space points."""
         points = points.clone()
@@ -54,4 +67,125 @@ class BlackBridgeEnv(BlackEnv):
 
         extra_clearance = torch.relu(foot_height_body - (self.cfg.rewards.clearance_height_target + 0.06))
         reward = ahead_drop * extra_clearance * swing_weight * move_cmd
+        return torch.sum(reward, dim=1)
+
+    def _reward_gap_recovery_burst(self):
+        """
+        Reward command-direction acceleration only when a foot is genuinely falling into
+        a bridge gap, so the policy learns to recover with a quick push instead of only
+        keeping motions smooth.
+        """
+        cmd_xy = self.commands[:, :2]
+        cmd_norm = torch.norm(cmd_xy, dim=1)
+        move_cmd = cmd_norm > 0.1
+        cmd_dir = cmd_xy / torch.clamp(cmd_norm.unsqueeze(1), min=1e-6)
+
+        terrain_height = self.feet_pos[:, :, 2] - self._get_feet_heights()
+        support_height_ref = torch.max(terrain_height, dim=1, keepdim=True).values
+        gap_depth = torch.relu(support_height_ref - terrain_height - 0.12)
+
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        footvel_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footpos_translated[:, i, :]
+            )
+            footvel_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footvel_translated[:, i, :]
+            )
+
+        foot_height_body = footpos_in_body_frame[:, :, 2]
+        foot_fall_speed = torch.relu(-footvel_in_body_frame[:, :, 2] - 0.08)
+        low_foot = torch.relu((self.cfg.rewards.clearance_height_target - 0.04) - foot_height_body)
+
+        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+        no_contact = 1.0 - torch.sigmoid((contact_force_z - 5.0) * 0.5)
+
+        misstep_weight = gap_depth * foot_fall_speed * low_foot * no_contact
+        misstep_event = torch.max(misstep_weight, dim=1).values
+
+        base_acc_xy = (self.base_lin_vel[:, :2] - self.prev_base_lin_vel[:, :2]) / self.dt
+        forward_acc = torch.relu(torch.sum(base_acc_xy * cmd_dir, dim=1))
+        return forward_acc * misstep_event * move_cmd.float()
+
+    def _reward_feet_stumble(self):
+        """
+        Bridge-specific stumble penalty.
+        Penalize low feet that build large horizontal contact forces while the robot has
+        a motion command but fails to make matching forward progress. This targets the
+        common failure mode where a hind leg catches the next plank edge and keeps pushing.
+        """
+        cmd_xy = self.commands[:, :2]
+        cmd_norm = torch.norm(cmd_xy, dim=1)
+        move_cmd = cmd_norm > 0.1
+        cmd_dir = cmd_xy / torch.clamp(cmd_norm.unsqueeze(1), min=1e-6)
+        progress_speed = torch.sum(self.base_lin_vel[:, :2] * cmd_dir, dim=1)
+        stalled_weight = torch.relu(cmd_norm - progress_speed - 0.05).unsqueeze(1)
+
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footpos_translated[:, i, :]
+            )
+
+        foot_height_body = footpos_in_body_frame[:, :, 2]
+        edge_zone = torch.relu((self.cfg.rewards.clearance_height_target + 0.03) - foot_height_body)
+
+        horiz_force = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
+        vert_force = torch.abs(self.contact_forces[:, self.feet_indices, 2])
+        snag_force = torch.relu(horiz_force - 1.5 * vert_force - 5.0)
+
+        penalty = snag_force * edge_zone * stalled_weight * move_cmd.float().unsqueeze(1)
+        return torch.sum(penalty, dim=1)
+
+    def _reward_edge_escape(self):
+        """
+        Reward lifting a snagged foot upward when it catches the plank edge.
+        Rear feet get more weight because the dominant bridge failure is the hind leg
+        hanging on the next plank and pushing until the robot collapses.
+        """
+        cmd_xy = self.commands[:, :2]
+        cmd_norm = torch.norm(cmd_xy, dim=1)
+        move_cmd = cmd_norm > 0.1
+        cmd_dir = cmd_xy / torch.clamp(cmd_norm.unsqueeze(1), min=1e-6)
+        progress_speed = torch.sum(self.base_lin_vel[:, :2] * cmd_dir, dim=1)
+        stalled_weight = torch.relu(cmd_norm - progress_speed - 0.05).unsqueeze(1)
+
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        footvel_in_body_frame = torch.zeros(
+            self.num_envs, len(self.feet_indices), 3, device=self.device
+        )
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footpos_translated[:, i, :]
+            )
+            footvel_in_body_frame[:, i, :] = quat_rotate_inverse(
+                self.base_quat, cur_footvel_translated[:, i, :]
+            )
+
+        foot_height_body = footpos_in_body_frame[:, :, 2]
+        edge_zone = torch.relu((self.cfg.rewards.clearance_height_target + 0.03) - foot_height_body)
+
+        horiz_force = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
+        vert_force = torch.abs(self.contact_forces[:, self.feet_indices, 2])
+        snag_force = torch.relu(horiz_force - 1.5 * vert_force - 5.0)
+
+        upward_vel = torch.relu(footvel_in_body_frame[:, :, 2] - 0.05)
+        rear_weight = torch.tensor([0.5, 0.5, 1.0, 1.0], device=self.device).unsqueeze(0)
+
+        reward = upward_vel * snag_force * edge_zone * stalled_weight * rear_weight
+        reward = reward * move_cmd.float().unsqueeze(1)
         return torch.sum(reward, dim=1)

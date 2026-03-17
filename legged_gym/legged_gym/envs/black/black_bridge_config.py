@@ -17,7 +17,7 @@ class BlackBridgeCfg(BlackCfg):
 
     class terrain(BlackCfg.terrain):
         # flat, smooth slope, rough slope, stairs down, stairs up, discrete, stones, gap, bridge, wall
-        terrain_proportions = [0.1, 0.1, 0.1, 0.0, 0.2, 0.0, 0.0, 0.0, 0.6, 0.0]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8, 0.0]
         max_init_terrain_level = 2
 
         # Bridge course: (10 cm gap,long plank) -> (10 cm,short) -> (20 cm,long) -> (20 cm,short)
@@ -44,15 +44,16 @@ class BlackBridgeCfg(BlackCfg):
             base_height = -1.0
             foot_clearance = -2.0
             gap_clearance = 8.0
-            action_rate = -0.025
+            gap_recovery_burst = 10.0
+            edge_escape = 4.0
+            action_rate = -0.03
             smoothness = -0.01
             feet_air_time = 0.8
-            collision = -0.03
             feet_stumble = -0.3
             foot_slip = -0.15
             progress = 0.5
             collision = -0.01
-            dof_acc = -1e-7
+            dof_acc = -1e-8
             stand_still = -2.0
 
 
