@@ -9,6 +9,53 @@ class BlackEnv(LeggedRobot):
     自定义环境类 BlackEnv，适配 HIMLoco框架
     """
 
+    def _init_base_height_points(self):
+        """Use a footprint-aligned area slightly larger than the standing feet rectangle."""
+        # Standing footprint is about 0.425 m x 0.311 m; expand it slightly to leave
+        # margin around lifted feet and terrain edges under the support polygon.
+        x = torch.tensor(
+            [-0.30, -0.24, -0.18, -0.12, -0.06, 0.0, 0.06, 0.12, 0.18, 0.24, 0.30],
+            device=self.device,
+            requires_grad=False,
+        )
+        y = torch.tensor(
+            [-0.18, -0.135, -0.09, -0.045, 0.0, 0.045, 0.09, 0.135, 0.18],
+            device=self.device,
+            requires_grad=False,
+        )
+        grid_x, grid_y = torch.meshgrid(x, y)
+
+        self.num_base_height_points = grid_x.numel()
+        points = torch.zeros(
+            self.num_envs, self.num_base_height_points, 3, device=self.device, requires_grad=False
+        )
+        points[:, :, 0] = grid_x.flatten()
+        points[:, :, 1] = grid_y.flatten()
+        return points
+
+    def _draw_debug_vis(self):
+        """Draw default terrain samples plus the under-body adaptive-scaling samples."""
+        if not self.terrain.cfg.measure_heights:
+            return
+
+        super()._draw_debug_vis()
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+
+        body_sphere = gymutil.WireframeSphereGeometry(0.015, 4, 4, None, color=(0, 1, 1))
+        under_body_heights = self._get_under_body_height_samples()
+        for i in range(self.num_envs):
+            base_pos = self.root_states[i, :3].cpu().numpy()
+            body_heights = under_body_heights[i].cpu().numpy()
+            body_points = quat_apply_yaw(
+                self.base_quat[i].repeat(body_heights.shape[0]), self.base_height_points[i]
+            ).cpu().numpy()
+            for j in range(body_heights.shape[0]):
+                x = body_points[j, 0] + base_pos[0]
+                y = body_points[j, 1] + base_pos[1]
+                z = body_heights[j]
+                sphere_pose = gymapi.Transform(gymapi.Vec3(x, y, z), r=None)
+                gymutil.draw_lines(body_sphere, self.gym, self.viewer, self.envs[i], sphere_pose)
+
     def _init_buffers(self):
         """ 初始化 Buffer，额外获取所有刚体状态用于自定义奖励 """
         super()._init_buffers()
@@ -103,7 +150,7 @@ class BlackEnv(LeggedRobot):
         return env_ids, termination_privileged_obs
 
     def check_termination(self):
-        """在默认接触/超时终止基础上，补充桥坑内卡死检测。"""
+        """在默认接触/超时终止基础上，补充通用卡死检测。"""
         super().check_termination()
 
         move_cmd_norm = torch.norm(self.commands[:, :2], dim=1)
@@ -112,23 +159,8 @@ class BlackEnv(LeggedRobot):
         progress_speed = torch.sum(self.base_lin_vel[:, :2] * cmd_dir, dim=1)
         stalled = progress_speed < self.cfg.env.stuck_vel_threshold
 
-        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
-        footpos_in_body_frame = torch.zeros(
-            self.num_envs, len(self.feet_indices), 3, device=self.device
-        )
-        for i in range(len(self.feet_indices)):
-            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
-                self.base_quat, cur_footpos_translated[:, i, :]
-            )
-
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
-        low_foot = footpos_in_body_frame[:, :, 2] < (
-            self.cfg.rewards.clearance_height_target - self.cfg.env.stuck_foot_height_margin
-        )
-        trapped_foot = torch.any(contact & low_foot, dim=1)
-
         grace_done = (self.episode_length_buf.float() * self.dt) > self.cfg.env.stuck_grace_s
-        stuck_mask = move_cmd & stalled & trapped_foot & grace_done
+        stuck_mask = move_cmd & stalled & grace_done
 
         self.stuck_time = torch.where(stuck_mask, self.stuck_time + self.dt, torch.zeros_like(self.stuck_time))
         self.reset_buf |= self.stuck_time > self.cfg.env.stuck_timeout_s
@@ -585,54 +617,151 @@ class BlackEnv(LeggedRobot):
         # 只关心向下速度；低于安全阈值的正常落地不惩罚
         impact_vel = torch.clamp(-self.feet_vel[:, :, 2] - 0.2, min=0.0)
         return torch.sum(torch.square(impact_vel) * first_contact.float(), dim=1)
-    
+
+    def _get_under_body_height_samples(self, env_ids=None):
+        if self.cfg.terrain.mesh_type == 'plane':
+            num_envs = len(env_ids) if env_ids is not None else self.num_envs
+            return torch.zeros(num_envs, self.num_base_height_points, device=self.device)
+        elif self.cfg.terrain.mesh_type == 'none':
+            raise NameError("Can't measure height with terrain mesh type 'none'")
+
+        if env_ids is not None:
+            points = quat_apply_yaw(
+                self.base_quat[env_ids].repeat(1, self.num_base_height_points),
+                self.base_height_points[env_ids],
+            ) + self.root_states[env_ids, :3].unsqueeze(1)
+            num_envs = len(env_ids)
+        else:
+            points = quat_apply_yaw(
+                self.base_quat.repeat(1, self.num_base_height_points),
+                self.base_height_points,
+            ) + self.root_states[:, :3].unsqueeze(1)
+            num_envs = self.num_envs
+
+        points += self.terrain.cfg.border_size
+        points = (points / self.terrain.cfg.horizontal_scale).long()
+        px = points[:, :, 0].view(-1)
+        py = points[:, :, 1].view(-1)
+        px = torch.clip(px, 0, self.height_samples.shape[0] - 2)
+        py = torch.clip(py, 0, self.height_samples.shape[1] - 2)
+
+        heights1 = self.height_samples[px, py]
+        heights2 = self.height_samples[px + 1, py]
+        heights3 = self.height_samples[px, py + 1]
+        heights = torch.min(heights1, heights2)
+        heights = torch.min(heights, heights3)
+
+        return heights.view(num_envs, -1) * self.terrain.cfg.vertical_scale
+
+    def _get_terrain_variability(self):
+        cfg = self.cfg.rewards.terrain_adaptive
+        if not cfg.enabled:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        under_body_heights = self._get_under_body_height_samples()
+        terrain_variability = torch.std(under_body_heights, dim=1)
+        return torch.clamp(terrain_variability, min=0.0, max=cfg.terrain_variability_clip)
+
+    def _get_adaptive_decay_scale(self, cfg_node, terrain_variability):
+        if not (self.cfg.rewards.terrain_adaptive.enabled and cfg_node.enabled):
+            return torch.ones_like(terrain_variability)
+
+        scale = torch.exp(-torch.square(terrain_variability) / cfg_node.sigma)
+        return torch.clamp(scale, min=cfg_node.min_scale, max=cfg_node.max_scale)
+
+    def _get_clearance_margin(self, terrain_variability):
+        cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
+        if not (self.cfg.rewards.terrain_adaptive.enabled and cfg.enabled):
+            return torch.zeros(self.num_envs, 1, device=self.device)
+
+        extra_clearance = cfg.std_gain * terrain_variability.unsqueeze(1)
+        return torch.clamp(extra_clearance, min=0.0, max=cfg.max_extra_clearance)
+
+    # def _reward_foot_clearance(self):
+    #     """
+    #     机身坐标系下的最小安全抬脚高度惩罚。
+    #     只在机器人有运动意图且脚处于离地/摆动状态时，惩罚抬脚不足；
+    #     对高于目标的抬脚不做惩罚，给越障和恢复动作留出自由度。
+    #     """
+    #     cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+    #     cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+
+    #     footpos_in_body_frame = torch.zeros(
+    #         self.num_envs, len(self.feet_indices), 3, device=self.device
+    #     )
+    #     footvel_in_body_frame = torch.zeros(
+    #         self.num_envs, len(self.feet_indices), 3, device=self.device
+    #     )
+
+    #     for i in range(len(self.feet_indices)):
+    #         footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
+    #             self.base_quat, cur_footpos_translated[:, i, :]
+    #         )
+    #         footvel_in_body_frame[:, i, :] = quat_rotate_inverse(
+    #             self.base_quat, cur_footvel_translated[:, i, :]
+    #         )
+
+    #     foot_lateral_vel = torch.sqrt(
+    #         torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)
+    #     )
+    #     foot_height_body = footpos_in_body_frame[:, :, 2]
+
+    #     # 只惩罚低于“最低安全高度”的摆动腿，允许更高抬脚来越障
+    #     min_clearance_error = torch.relu(
+    #         self.cfg.rewards.clearance_height_target - foot_height_body
+    #     )
+
+    #     # 用软接触概率区分支撑/摆动，减轻 PhysX 接触抖动带来的误判
+    #     contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+    #     contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
+    #     swing_weight = 1.0 - contact_prob
+
+    #     # 静止时不强迫抬腿；转向时也保留 clearance 约束
+    #     move_cmd = (
+    #         (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+    #         | (torch.abs(self.commands[:, 2]) > 0.1)
+    #     ).float().unsqueeze(1)
+
+    #     penalty = torch.abs(min_clearance_error) * foot_lateral_vel * swing_weight * move_cmd
+    #     return torch.sum(penalty, dim=1)
+
     def _reward_foot_clearance(self):
         """
-        机身坐标系下的最小安全抬脚高度惩罚。
-        只在机器人有运动意图且脚处于离地/摆动状态时，惩罚抬脚不足；
-        对高于目标的抬脚不做惩罚，给越障和恢复动作留出自由度。
+        [地形自适应的相位抬腿惩罚]
+        平地时约束脚高贴近期望摆动轨迹；地形起伏增大时，放宽高抬脚惩罚，
+        允许机器人为了跨台阶/障碍而抬得更高。
         """
-        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
-        cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        # 1. 获取当前脚相对脚底局部地形的高度
+        feet_height = self._get_feet_heights()
 
-        footpos_in_body_frame = torch.zeros(
-            self.num_envs, len(self.feet_indices), 3, device=self.device
-        )
-        footvel_in_body_frame = torch.zeros(
-            self.num_envs, len(self.feet_indices), 3, device=self.device
-        )
+        # 2. 计算每个脚的相位
+        phase = self._get_phase().unsqueeze(1)
+        offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
+        feet_phases = (phase + offsets) % 1.0
 
-        for i in range(len(self.feet_indices)):
-            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(
-                self.base_quat, cur_footpos_translated[:, i, :]
-            )
-            footvel_in_body_frame[:, i, :] = quat_rotate_inverse(
-                self.base_quat, cur_footvel_translated[:, i, :]
-            )
+        # 3. 计算步态相位与移动掩码
+        sin_val = torch.sin(2 * torch.pi * feet_phases)
+        move_cmd = (torch.norm(self.commands[:, :2], dim=1) > 0.1) | (torch.abs(self.commands[:, 2]) > 0.1)
 
-        foot_lateral_vel = torch.sqrt(
-            torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)
-        )
-        foot_height_body = footpos_in_body_frame[:, :, 2]
+        # 4. 利用地形采样估计当前环境的起伏复杂度。
+        # 台阶/障碍越明显，允许的额外抬脚空间越大。
+        terrain_variability = self._get_terrain_variability()
+        extra_clearance = self._get_clearance_margin(terrain_variability)
+        clearance_cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
 
-        # 只惩罚低于“最低安全高度”的摆动腿，允许更高抬脚来越障
-        min_clearance_error = torch.relu(
-            self.cfg.rewards.clearance_height_target - foot_height_body
-        )
+        # 5. 分阶段计算惩罚
+        stance_tolerance = 0.02 + clearance_cfg.stance_gain * extra_clearance
+        stance_penalty = torch.relu(feet_height - stance_tolerance)
 
-        # 用软接触概率区分支撑/摆动，减轻 PhysX 接触抖动带来的误判
-        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
-        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
-        swing_weight = 1.0 - contact_prob
+        swing_target = -sin_val * self.cfg.rewards.clearance_height_target
+        swing_low_penalty = torch.relu(swing_target - feet_height)
+        swing_high_penalty = torch.relu(feet_height - (swing_target + extra_clearance))
+        swing_penalty = swing_low_penalty + clearance_cfg.swing_high_penalty_weight * swing_high_penalty
 
-        # 静止时不强迫抬腿；转向时也保留 clearance 约束
-        move_cmd = (
-            (torch.norm(self.commands[:, :2], dim=1) > 0.1)
-            | (torch.abs(self.commands[:, 2]) > 0.1)
-        ).float().unsqueeze(1)
+        # 6. 支撑相贴地，摆动相低抬脚严格罚，高抬脚在复杂地形时放宽
+        error = torch.where(sin_val > 0, stance_penalty, swing_penalty)
 
-        penalty = torch.square(min_clearance_error) * foot_lateral_vel * swing_weight * move_cmd
-        return torch.sum(penalty, dim=1)
+        return torch.sum(error, dim=1) * move_cmd.float()
 
     def _reward_feet_air_time(self):
         """
@@ -677,17 +806,11 @@ class BlackEnv(LeggedRobot):
         # self.measured_heights: [num_envs, num_height_points]
         # 计算采样点高度的标准差 (Standard Deviation)
         # 平地 std 接近 0；楼梯/斜坡 std 会显著增大
-        terrain_variability = torch.std(self.measured_heights, dim=1)
-
-        # 3. 计算动态权重系数 (Scale Factor)
-        # 地形越复杂 -> 系数越小 -> 惩罚越小
-        # 使用高斯衰减函数：scale = exp(- (std^2) / sigma)
-        # sigma: 敏感度参数。
-        sigma = 0.03 
-        pitch_scale = torch.exp(-torch.square(terrain_variability) / sigma)
-
-        # 限制最小权重，防止机器人完全“躺平”或翻倒也不受惩罚
-        pitch_scale = torch.clip(pitch_scale, min=0.1, max=1.0)
+        terrain_variability = self._get_terrain_variability()
+        pitch_scale = self._get_adaptive_decay_scale(
+            self.cfg.rewards.terrain_adaptive.orientation,
+            terrain_variability,
+        )
 
         # 4. 组合奖励
         # Roll 惩罚 (roll_proj) 保持原样 (甚至可以加权)，因为爬楼梯也不应该侧倾
@@ -697,6 +820,29 @@ class BlackEnv(LeggedRobot):
         penalty = torch.square(roll_proj) + torch.square(pitch_proj) * pitch_scale
 
         return penalty
+
+    def _reward_action_rate(self):
+        """地形复杂时适度放松一阶动作变化惩罚，给越障爆发留出空间。"""
+        penalty = torch.sum(torch.square(self.last_actions - self.actions), dim=1)
+        terrain_variability = self._get_terrain_variability()
+        scale = self._get_adaptive_decay_scale(
+            self.cfg.rewards.terrain_adaptive.action_rate,
+            terrain_variability,
+        )
+        return penalty * scale
+
+    def _reward_smoothness(self):
+        """地形复杂时保留结构性平滑约束，但允许二阶动作变化更灵活。"""
+        penalty = torch.sum(
+            torch.square(self.actions - self.last_actions - self.last_actions + self.last_last_actions),
+            dim=1,
+        )
+        terrain_variability = self._get_terrain_variability()
+        scale = self._get_adaptive_decay_scale(
+            self.cfg.rewards.terrain_adaptive.smoothness,
+            terrain_variability,
+        )
+        return penalty * scale
 
     def _reward_stand_still(self):
         # Penalize motion at zero commands

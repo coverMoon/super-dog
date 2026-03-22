@@ -72,15 +72,15 @@ class BlackCfg(LeggedRobotCfg):
         name = "black"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base"]
+        terminate_after_contacts_on = ["base", "thigh"]
         privileged_contacts_on = ["base", "thigh", "calf"]
         self_collisions = 1 # 1=disable
 
     class commands:
         curriculum = True
         max_curriculum = 2.0
-        curriculum_threshold = 0.65
-        curriculum_ema_alpha = 0.4
+        curriculum_threshold = 0.7
+        curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
@@ -99,13 +99,13 @@ class BlackCfg(LeggedRobotCfg):
 
     class domain_rand:
         randomize_payload_mass = True
-        payload_mass_range = [-2.0, 3.0]
+        payload_mass_range = [-2.0, 4.0]
 
         randomize_com_displacement = True
         com_displacement_range = [-0.05, 0.05]
 
         randomize_link_mass = True
-        link_mass_range = [0.85, 1.25]
+        link_mass_range = [0.75, 1.25]
         
         randomize_friction = True
         friction_range = [0.3, 1.35]
@@ -117,15 +117,15 @@ class BlackCfg(LeggedRobotCfg):
         motor_strength_range = [0.8, 1.2]
         
         randomize_kp = True
-        kp_range = [0.85, 1.15]
+        kp_range = [0.8, 1.2]
         
         randomize_kd = True
-        kd_range = [0.85, 1.15]
+        kd_range = [0.8, 1.2]
         
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
         
-        randomize_inertia = False
+        randomize_inertia = True
         inertia_range = [0.5, 1.5]
 
         disturbance = True
@@ -191,28 +191,75 @@ class BlackCfg(LeggedRobotCfg):
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
         episode_length_s = 20 # episode length in seconds
-        stuck_timeout_s = 1.5
+        stuck_timeout_s = 4.0
         stuck_vel_threshold = 0.05
-        stuck_foot_height_margin = 0.12
         stuck_command_threshold = 0.2
         stuck_grace_s = 1.0
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        # 机身坐标系下摆动腿的最低安全高度（单位：m，向下为负）
-        # 默认站立脚高约为 -0.412m，这里取略高的 -0.38m 作为防拖脚阈值
-        clearance_height_target = -0.38
-        soft_dof_pos_limit = 0.9
+        clearance_height_target = 0.05
+        soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
+        soft_dof_vel_limit = 0.85
+        soft_torque_limit = 0.80
         base_height_target = 0.43
         only_positive_rewards = False
+        class terrain_adaptive:
+            enabled = True
+            terrain_variability_source = "measured_heights_std"
+            terrain_variability_clip = 0.10
+
+            class orientation:
+                enabled = True
+                mode = "decay"
+                sigma = 0.03
+                min_scale = 0.1
+                max_scale = 1.0
+
+            class smoothness:
+                enabled = True
+                mode = "decay"
+                sigma = 0.02
+                min_scale = 0.8
+                max_scale = 1.0
+
+            class action_rate:
+                enabled = True
+                mode = "decay"
+                sigma = 0.02
+                min_scale = 0.6
+                max_scale = 1.0
+
+            class torques:
+                enabled = False
+                mode = "decay"
+                sigma = 0.05
+                min_scale = 0.6
+                max_scale = 1.0
+
+            class progress:
+                enabled = False
+                mode = "boost"
+                sigma = 0.04
+                min_scale = 1.0
+                max_scale = 1.5
+
+            class foot_clearance:
+                enabled = True
+                mode = "margin"
+                std_gain = 2.0
+                max_extra_clearance = 0.10
+                stance_gain = 0.5
+                swing_high_penalty_weight = 0.25
+
         class scales:
             termination = -0.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.0
+            tracking_ang_vel = 1.5
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
             orientation = -2.0
-            dof_acc = -5e-7
+            dof_acc = -0.0
             joint_power = -1e-6
             base_height = -2.0
             foot_clearance = -3.0
@@ -223,17 +270,17 @@ class BlackCfg(LeggedRobotCfg):
             feet_stumble = -0.5
             stand_still = -1.0
             torques = -1e-6
-            dof_vel = -0.0
+            dof_vel = -1e-7
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
-            torque_limits = -0.0
+            torque_limits = -1e-5
             trot = 1.0
             hip_pos = -0.8 
             all_joint_pos = -0.001
             foot_slip = -0.3
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
-            progress = 0.3
+            progress = 0.5
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -253,7 +300,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
@@ -287,10 +334,10 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.2
+        sym_coef = 0.5
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_black_dog'
-        max_iterations=3000
+        max_iterations=5000
          

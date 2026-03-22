@@ -32,7 +32,6 @@ class BlackBridgeCfg(BlackCfg):
         episode_length_s = 15
         stuck_timeout_s = 0.8
         stuck_vel_threshold = 0.08
-        stuck_foot_height_margin = 0.1
         stuck_command_threshold = 0.2
         stuck_grace_s = 0.6
 

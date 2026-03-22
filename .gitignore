@@ -28,4 +28,4 @@ dist/
 
 # others
 run_train_docker.sh
-perception_work
+robust_arm
