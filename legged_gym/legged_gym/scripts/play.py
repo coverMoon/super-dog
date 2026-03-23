@@ -56,7 +56,7 @@ def play(args, x_vel=0.0, y_vel=0.5, yaw_vel=0.0):
     # env_cfg.terrain.mesh_type = 'plane'
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    env.debug_viz = True
+    env.debug_viz = False
     env.commands[:, 0] = x_vel
     env.commands[:, 1] = y_vel
     env.commands[:, 2] = yaw_vel
@@ -134,4 +134,4 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     args = get_args()
-    play(args, x_vel=0.0, y_vel=0.0, yaw_vel=0.0)
+    play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0)

@@ -82,6 +82,7 @@ class BlackCfg(LeggedRobotCfg):
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
+        curriculum_buffer_min = 256
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
@@ -206,14 +207,13 @@ class BlackCfg(LeggedRobotCfg):
         only_positive_rewards = False
         class terrain_adaptive:
             enabled = True
-            terrain_variability_source = "measured_heights_std"
             terrain_variability_clip = 0.10
 
             class orientation:
                 enabled = True
                 mode = "decay"
                 sigma = 0.03
-                min_scale = 0.1
+                min_scale = 0.3
                 max_scale = 1.0
 
             class smoothness:
@@ -258,12 +258,12 @@ class BlackCfg(LeggedRobotCfg):
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -2.0
+            orientation = -3.0
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -2.0
             foot_clearance = -3.0
-            action_rate = -0.05
+            action_rate = -0.08
             smoothness = -0.02
             feet_air_time = 0.4
             collision = -0.05
