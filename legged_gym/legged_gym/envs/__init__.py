@@ -36,8 +36,10 @@ from legged_gym.envs.go1.go1_config import Go1RoughCfg, Go1RoughCfgPPO
 from legged_gym.envs.aliengo.aliengo_config import AlienGoRoughCfg, AlienGoRoughCfgPPO
 from legged_gym.envs.black.black_config import BlackCfg, BlackCfgPPO
 from legged_gym.envs.black.black_bridge_config import BlackBridgeCfg, BlackBridgeCfgPPO
+from legged_gym.envs.black_arm.black_arm_config import BlackArmCfg, BlackArmCfgPPO
 from legged_gym.envs.black.black_env import BlackEnv
 from legged_gym.envs.black.black_bridge_env import BlackBridgeEnv
+from legged_gym.envs.black_arm.black_arm_env import BlackArmEnv
 import os
 
 from legged_gym.utils.task_registry import task_registry
@@ -47,3 +49,4 @@ task_registry.register( "go1", LeggedRobot, Go1RoughCfg(), Go1RoughCfgPPO() )
 task_registry.register( "aliengo", LeggedRobot, AlienGoRoughCfg(), AlienGoRoughCfgPPO() )
 task_registry.register( "black", BlackEnv, BlackCfg(), BlackCfgPPO() )
 task_registry.register( "black_bridge", BlackBridgeEnv, BlackBridgeCfg(), BlackBridgeCfgPPO() )
+task_registry.register( "black_arm", BlackArmEnv, BlackArmCfg(), BlackArmCfgPPO() )
