@@ -17,6 +17,9 @@ class BlackArmEnv(BlackEnv):
     def _sample_arm_task_modes(self, env_ids):
         if len(env_ids) == 0:
             return
+        if not self.arm_motion_enabled:
+            self.arm_task_mode[env_ids] = self.MODE_LOCOMOTION_ONLY
+            return
         self.arm_task_mode[env_ids] = torch.multinomial(self.arm_task_mode_probs, len(env_ids), replacement=True)
 
     def _sample_heading_targets(self, env_ids, offset_range):
