@@ -21,17 +21,17 @@ class BlackArmCfg(LeggedRobotCfg):
         # 2. PD 参数
         # 刚度 (P Gain)
         stiffness = {
-            'FL_hip_joint': 45.0, 'RL_hip_joint': 45.0, 'FR_hip_joint': 45.0, 'RR_hip_joint': 45.0,
-            'FL_thigh_joint': 45.0, 'RL_thigh_joint': 45.0, 'FR_thigh_joint': 45.0, 'RR_thigh_joint': 45.0,
-            'FL_calf_joint': 45.0, 'RL_calf_joint': 45.0, 'FR_calf_joint': 45.0, 'RR_calf_joint': 45.0,
+            'FL_hip_joint': 50.0, 'RL_hip_joint': 50.0, 'FR_hip_joint': 50.0, 'RR_hip_joint': 50.0,
+            'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
+            'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
             'arm_yaw_joint': 30.0, 'arm_pitch_1_joint': 30.0, 'arm_pitch_2_joint': 30.0,
             'arm_pitch_3_joint': 20.0, 'arm_roll_joint': 10.0,
         }
         # 阻尼 (D Gain)
         damping = {
-            'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
-            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
-            'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
+            'FL_hip_joint': 1.5, 'RL_hip_joint': 1.5, 'FR_hip_joint': 1.5, 'RR_hip_joint': 1.5,
+            'FL_thigh_joint': 1.5, 'RL_thigh_joint': 1.5, 'FR_thigh_joint': 1.5, 'RR_thigh_joint': 1.5,
+            'FL_calf_joint': 1.5, 'RL_calf_joint': 1.5, 'FR_calf_joint': 1.5, 'RR_calf_joint': 1.5,
             'arm_yaw_joint': 1.0, 'arm_pitch_1_joint': 1.0, 'arm_pitch_2_joint': 1.0,
             'arm_pitch_3_joint': 0.8, 'arm_roll_joint': 0.5,
         }
@@ -81,7 +81,7 @@ class BlackArmCfg(LeggedRobotCfg):
         curriculum_buffer_min = 256
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
-        heading_command = True # if true: compute ang vel command from heading error
+        heading_command = False # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -176,7 +176,7 @@ class BlackArmCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class arm:
-        motion_enabled = True
+        motion_enabled = False
         motion_only_for_low_speed_commands = True
         motion_max_lin_speed = 0.0
         motion_max_yaw_speed = 0.0
@@ -295,8 +295,8 @@ class BlackArmCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -1.0
             foot_clearance = -3.0
-            action_rate = -0.1
-            smoothness = -0.02
+            action_rate = -0.05
+            smoothness = -0.01
             feet_air_time = 0.3
             collision = -0.05
             feet_stumble = -0.5
@@ -366,7 +366,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.5
+        sym_coef = 0.8
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''

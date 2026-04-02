@@ -227,7 +227,7 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.02
-                min_scale = 0.6
+                min_scale = 0.8
                 max_scale = 1.0
 
             class torques:
@@ -263,8 +263,8 @@ class BlackCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -2.0
             foot_clearance = -3.0
-            action_rate = -0.08
-            smoothness = -0.02
+            action_rate = -0.1
+            smoothness = -0.03
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
@@ -300,7 +300,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
@@ -334,7 +334,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.5
+        sym_coef = 0.8
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''

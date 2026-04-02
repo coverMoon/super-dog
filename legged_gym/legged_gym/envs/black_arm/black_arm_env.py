@@ -733,7 +733,7 @@ class BlackArmEnv(BlackEnv):
     def _reward_stand_still(self):
         leg_pos = self.dof_pos[:, self.leg_dof_indices]
         leg_vel = self.dof_vel[:, self.leg_dof_indices]
-        is_still = torch.norm(self.commands[:, :2], dim=1) < 0.1
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
         pos_error = torch.sum(torch.abs(leg_pos - self.default_leg_dof_pos), dim=1)
         vel_error = torch.sum(torch.abs(leg_vel), dim=1)
         return (pos_error + 0.05 * vel_error) * is_still
