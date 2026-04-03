@@ -6,10 +6,10 @@ class BlackArmCfg(LeggedRobotCfg):
         # 1. 初始姿态
         pos = [0.0, 0.0, 0.45] 
         default_joint_angles = {
-            'FL_hip_joint': 0.1,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
-            'FR_hip_joint': -0.1,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
-            'RL_hip_joint': -0.1,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527,
-            'RR_hip_joint': 0.1,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527,
+            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
+            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
+            'RL_hip_joint': -0.0,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527,
+            'RR_hip_joint': 0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527,
             'arm_yaw_joint': 0.0,
             'arm_pitch_1_joint': 3.14,
             'arm_pitch_2_joint': -2.81,
@@ -150,7 +150,7 @@ class BlackArmCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -231,11 +231,11 @@ class BlackArmCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        clearance_height_target = 0.05
+        clearance_height_target = 0.08
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
-        base_height_target = 0.421
+        base_height_target = 0.43
         only_positive_rewards = False
         class terrain_adaptive:
             enabled = False
@@ -293,15 +293,15 @@ class BlackArmCfg(LeggedRobotCfg):
             orientation = -10.0
             dof_acc = -0.0
             joint_power = -1e-6
-            base_height = -1.0
+            base_height = -5.0
             foot_clearance = -3.0
-            action_rate = -0.05
-            smoothness = -0.01
+            action_rate = -0.08
+            smoothness = -0.02
             feet_air_time = 0.3
             collision = -0.05
             feet_stumble = -0.5
-            stand_still = -2.0
-            torques = -1e-6
+            stand_still = -3.0
+            torques = -1e-5
             dof_vel = -1e-7
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
@@ -332,7 +332,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 5.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
@@ -370,6 +370,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
+        num_steps_per_env = 64
         experiment_name = 'rough_black_arm'
         max_iterations=5000
          

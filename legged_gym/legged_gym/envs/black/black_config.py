@@ -220,14 +220,14 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.02
-                min_scale = 0.8
+                min_scale = 0.9
                 max_scale = 1.0
 
             class action_rate:
                 enabled = True
                 mode = "decay"
                 sigma = 0.02
-                min_scale = 0.8
+                min_scale = 0.9
                 max_scale = 1.0
 
             class torques:
@@ -261,14 +261,14 @@ class BlackCfg(LeggedRobotCfg):
             orientation = -3.0
             dof_acc = -0.0
             joint_power = -1e-6
-            base_height = -2.0
-            foot_clearance = -3.0
-            action_rate = -0.1
-            smoothness = -0.03
+            base_height = -3.0
+            foot_clearance = -2.0
+            action_rate = -0.05
+            smoothness = -0.02
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
-            stand_still = -1.0
+            stand_still = -1.2
             torques = -1e-6
             dof_vel = -1e-7
             dof_pos_limits = -0.0
@@ -338,6 +338,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
+        num_steps_per_env = 24
         experiment_name = 'rough_black_dog'
         max_iterations=5000
          
