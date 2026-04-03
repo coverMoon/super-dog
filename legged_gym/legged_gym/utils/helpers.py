@@ -139,6 +139,8 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
         # alg runner parameters
         if args.max_iterations is not None:
             cfg_train.runner.max_iterations = args.max_iterations
+        if args.num_steps_per_env is not None:
+            cfg_train.runner.num_steps_per_env = args.num_steps_per_env
         if args.resume:
             cfg_train.runner.resume = args.resume
         if args.experiment_name is not None:
@@ -149,6 +151,12 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
             cfg_train.runner.load_run = args.load_run
         if args.checkpoint is not None:
             cfg_train.runner.checkpoint = args.checkpoint
+        if args.num_mini_batches is not None:
+            cfg_train.algorithm.num_mini_batches = args.num_mini_batches
+        if args.num_learning_epochs is not None:
+            cfg_train.algorithm.num_learning_epochs = args.num_learning_epochs
+        if args.learning_rate is not None:
+            cfg_train.algorithm.learning_rate = args.learning_rate
 
     return env_cfg, cfg_train
 
@@ -167,6 +175,10 @@ def get_args():
         {"name": "--num_envs", "type": int, "help": "Number of environments to create. Overrides config file if provided."},
         {"name": "--seed", "type": int, "help": "Random seed. Overrides config file if provided."},
         {"name": "--max_iterations", "type": int, "help": "Maximum number of training iterations. Overrides config file if provided."},
+        {"name": "--num_steps_per_env", "type": int, "help": "Rollout length per environment before each PPO update. Overrides config file if provided."},
+        {"name": "--num_mini_batches", "type": int, "help": "Number of PPO mini-batches. Overrides config file if provided."},
+        {"name": "--num_learning_epochs", "type": int, "help": "Number of PPO learning epochs per iteration. Overrides config file if provided."},
+        {"name": "--learning_rate", "type": float, "help": "PPO learning rate. Overrides config file if provided."},
     ]
     # parse arguments
     args = gymutil.parse_arguments(
