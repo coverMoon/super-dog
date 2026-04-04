@@ -150,7 +150,7 @@ class BlackArmCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -176,7 +176,7 @@ class BlackArmCfg(LeggedRobotCfg):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
     class arm:
-        motion_enabled = False
+        motion_enabled = True
         motion_only_for_low_speed_commands = True
         motion_max_lin_speed = 0.0
         motion_max_yaw_speed = 0.0
@@ -332,8 +332,8 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 8 # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 5.e-4 #5.e-4
+        num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
+        learning_rate = 1.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
@@ -370,7 +370,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 64
+        num_steps_per_env = 100
         experiment_name = 'rough_black_arm'
-        max_iterations=5000
+        max_iterations=2000
          

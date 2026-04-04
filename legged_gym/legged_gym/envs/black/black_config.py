@@ -199,7 +199,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        clearance_height_target = 0.05
+        clearance_height_target = 0.08
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -213,7 +213,7 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.03
-                min_scale = 0.3
+                min_scale = 0.5
                 max_scale = 1.0
 
             class smoothness:
@@ -300,7 +300,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         clip_param = 0.2
         entropy_coef = 0.01
         num_learning_epochs = 5
-        num_mini_batches = 16 # mini batch size = num_envs*nsteps / nminibatches
+        num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
@@ -338,7 +338,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 24
+        num_steps_per_env = 100
         experiment_name = 'rough_black_dog'
-        max_iterations=5000
+        max_iterations=3000
          
