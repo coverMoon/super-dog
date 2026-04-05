@@ -284,6 +284,21 @@ class BlackArmCfg(LeggedRobotCfg):
                 stance_gain = 0.5
                 swing_high_penalty_weight = 0.25
 
+        class raibert:
+            nominal_front_x = 0.21
+            nominal_rear_x = -0.21
+            nominal_y = 0.155
+            max_linear_offset_x = 0.12
+            max_linear_offset_y = 0.08
+            vel_error_gain = 0.4
+            yaw_gain = 0.6
+            max_yaw_offset = 0.06
+            tracking_sigma = 0.08
+            late_swing_start = 0.35
+            touchdown_gain = 0.4
+            approach_bonus = 0.25
+            max_approach_speed = 0.4
+
         class scales:
             termination = -200.0
             tracking_lin_vel = 2.0
@@ -313,6 +328,7 @@ class BlackArmCfg(LeggedRobotCfg):
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
             progress = 0.5
+            raibert = 0.8
 
 class BlackArmCfgPPO(LeggedRobotCfgPPO):
     class policy:

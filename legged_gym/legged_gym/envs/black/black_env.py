@@ -59,6 +59,7 @@ class BlackEnv(LeggedRobot):
     def _init_buffers(self):
         """ 初始化 Buffer，额外获取所有刚体状态用于自定义奖励 """
         super()._init_buffers()
+        self._init_raibert_buffers()
 
         # 获取所有刚体的状态(可用于计算脚部位置、速度等)
         # 形状：(num_envs, num_bodies, 13)
@@ -75,6 +76,39 @@ class BlackEnv(LeggedRobot):
             self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False
         )
         self.stuck_time = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
+
+    def _init_raibert_buffers(self):
+        """为 trot/clearance/Raibert 奖励建立稳定的脚名映射与名义落脚点。"""
+        cfg = self.cfg.rewards.raibert
+        num_feet = len(self.feet_indices)
+        self.foot_name_to_index = {}
+        self.foot_phase_offsets = torch.zeros(num_feet, device=self.device, requires_grad=False)
+        self.nominal_foothold_xy = torch.zeros(num_feet, 2, device=self.device, requires_grad=False)
+
+        for i, foot_name in enumerate(self.feet_names):
+            leg_prefix = foot_name.split("_")[0]
+            self.foot_name_to_index[leg_prefix] = i
+
+            is_front = leg_prefix.startswith("F")
+            is_left = leg_prefix.endswith("L")
+
+            self.foot_phase_offsets[i] = 0.0 if leg_prefix in ("FL", "RR") else 0.5
+            self.nominal_foothold_xy[i, 0] = cfg.nominal_front_x if is_front else cfg.nominal_rear_x
+            self.nominal_foothold_xy[i, 1] = cfg.nominal_y if is_left else -cfg.nominal_y
+
+    def _get_feet_state_in_body_frame(self):
+        """返回脚端相对机身的局部位置和速度。"""
+        feet_rel_pos = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        feet_rel_vel = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        flat_base_quat = self.base_quat.unsqueeze(1).repeat(1, len(self.feet_indices), 1).view(-1, 4)
+
+        feet_pos_body = quat_rotate_inverse(flat_base_quat, feet_rel_pos.reshape(-1, 3)).view(
+            self.num_envs, len(self.feet_indices), 3
+        )
+        feet_vel_body = quat_rotate_inverse(flat_base_quat, feet_rel_vel.reshape(-1, 3)).view(
+            self.num_envs, len(self.feet_indices), 3
+        )
+        return feet_pos_body, feet_vel_body
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -459,8 +493,11 @@ class BlackEnv(LeggedRobot):
         contact_force_z = self.contact_forces[:, self.feet_indices, 2]
         # 使用 sigmoid 将力转换为触地概率 (0~1)
         contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
-        
-        fl, fr, rl, rr = contact_prob[:, 0], contact_prob[:, 1], contact_prob[:, 2], contact_prob[:, 3]
+
+        fl = contact_prob[:, self.foot_name_to_index["FL"]]
+        fr = contact_prob[:, self.foot_name_to_index["FR"]]
+        rl = contact_prob[:, self.foot_name_to_index["RL"]]
+        rr = contact_prob[:, self.foot_name_to_index["RR"]]
         
         # 1. 对角线同步奖励：FL 和 RR 应该状态一致，FR 和 RL 应该状态一致
         diag1_sync = 1.0 - torch.abs(fl - rr)
@@ -736,8 +773,7 @@ class BlackEnv(LeggedRobot):
 
         # 2. 计算每个脚的相位
         phase = self._get_phase().unsqueeze(1)
-        offsets = torch.tensor([0.0, 0.5, 0.5, 0.0], device=self.device).unsqueeze(0)
-        feet_phases = (phase + offsets) % 1.0
+        feet_phases = (phase + self.foot_phase_offsets.unsqueeze(0)) % 1.0
 
         # 3. 计算步态相位与移动掩码
         sin_val = torch.sin(2 * torch.pi * feet_phases)
@@ -762,6 +798,82 @@ class BlackEnv(LeggedRobot):
         error = torch.where(sin_val > 0, stance_penalty, swing_penalty)
 
         return torch.sum(error, dim=1) * move_cmd.float()
+
+    def _reward_raibert(self):
+        """
+        [Raibert 落脚点奖励]
+        将当前命令按可用指令范围归一化，再映射到有界的目标落脚点偏移。
+        这样即使速度课程继续放大，奖励给出的目标点也不会无限前冲。
+        """
+        move_cmd = (
+            (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+            | (torch.abs(self.commands[:, 2]) > 0.1)
+        )
+        if not torch.any(move_cmd).item():
+            return torch.zeros(self.num_envs, device=self.device)
+
+        cfg = self.cfg.rewards.raibert
+        foot_pos_body, foot_vel_body = self._get_feet_state_in_body_frame()
+
+        cmd_limits = self.commands.new_tensor([
+            max(abs(self.command_ranges["lin_vel_x"][0]), abs(self.command_ranges["lin_vel_x"][1]), 1e-6),
+            max(abs(self.command_ranges["lin_vel_y"][0]), abs(self.command_ranges["lin_vel_y"][1]), 1e-6),
+        ]).view(1, 1, 2)
+        cmd_xy_norm = torch.clamp(self.commands[:, :2].unsqueeze(1) / cmd_limits, min=-1.0, max=1.0)
+        vel_error_norm = torch.clamp(
+            (self.commands[:, :2] - self.base_lin_vel[:, :2]).unsqueeze(1) / cmd_limits,
+            min=-1.0,
+            max=1.0,
+        )
+        linear_drive = torch.clamp(cmd_xy_norm + cfg.vel_error_gain * vel_error_norm, min=-1.0, max=1.0)
+
+        max_linear_offset = self.commands.new_tensor(
+            [cfg.max_linear_offset_x, cfg.max_linear_offset_y]
+        ).view(1, 1, 2)
+        target_xy = self.nominal_foothold_xy.unsqueeze(0) + linear_drive * max_linear_offset
+
+        yaw_limit = 2.0 if self.cfg.commands.heading_command else max(
+            abs(self.command_ranges["ang_vel_yaw"][0]),
+            abs(self.command_ranges["ang_vel_yaw"][1]),
+            1e-6,
+        )
+        yaw_norm = torch.clamp(self.commands[:, 2].view(self.num_envs, 1, 1) / yaw_limit, min=-1.0, max=1.0)
+        yaw_basis = torch.stack(
+            (-self.nominal_foothold_xy[:, 1], self.nominal_foothold_xy[:, 0]),
+            dim=1,
+        )
+        yaw_basis = yaw_basis / torch.clamp(torch.norm(yaw_basis, dim=1, keepdim=True), min=1e-6)
+        target_xy = target_xy + cfg.max_yaw_offset * cfg.yaw_gain * yaw_norm * yaw_basis.unsqueeze(0)
+
+        phase = self._get_phase().unsqueeze(1)
+        feet_phases = (phase + self.foot_phase_offsets.unsqueeze(0)) % 1.0
+        swing_progress = torch.clamp((feet_phases - 0.5) * 2.0, min=0.0, max=1.0)
+        late_swing = torch.clamp(
+            (swing_progress - cfg.late_swing_start) / max(1e-6, 1.0 - cfg.late_swing_start),
+            min=0.0,
+            max=1.0,
+        )
+
+        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
+        planning_weight = late_swing * (1.0 + cfg.touchdown_gain * contact_prob)
+
+        xy_error = foot_pos_body[:, :, :2] - target_xy
+        tracking_reward = torch.exp(
+            -torch.sum(torch.square(xy_error), dim=2) / max(cfg.tracking_sigma ** 2, 1e-6)
+        )
+
+        target_dir = target_xy - foot_pos_body[:, :, :2]
+        target_dir = target_dir / torch.clamp(torch.norm(target_dir, dim=2, keepdim=True), min=1e-6)
+        approach_speed = torch.sum(foot_vel_body[:, :, :2] * target_dir, dim=2)
+        approach_bonus = torch.clamp(approach_speed, min=0.0, max=cfg.max_approach_speed) / max(
+            cfg.max_approach_speed, 1e-6
+        )
+
+        reward = planning_weight * (
+            tracking_reward + cfg.approach_bonus * approach_bonus
+        )
+        return torch.sum(reward, dim=1) * move_cmd.float()
 
     def _reward_feet_air_time(self):
         """
@@ -847,7 +959,7 @@ class BlackEnv(LeggedRobot):
     def _reward_stand_still(self):
         # Penalize motion at zero commands
         # 判定静止条件
-        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
         # 计算位置误差
         pos_error = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)

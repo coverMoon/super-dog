@@ -158,6 +158,7 @@ class BlackArmEnv(BlackEnv):
             self.height_points = self._init_height_points()
         self.measured_heights = self._get_heights()
         self.base_height_points = self._init_base_height_points()
+        self._init_raibert_buffers()
 
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         for i, name in enumerate(self.dof_names):
@@ -736,7 +737,7 @@ class BlackArmEnv(BlackEnv):
     def _reward_stand_still(self):
         leg_pos = self.dof_pos[:, self.leg_dof_indices]
         leg_vel = self.dof_vel[:, self.leg_dof_indices]
-        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1)
         pos_error = torch.sum(torch.abs(leg_pos - self.default_leg_dof_pos), dim=1)
         vel_error = torch.sum(torch.abs(leg_vel), dim=1)
         return (pos_error + 0.08 * vel_error) * is_still

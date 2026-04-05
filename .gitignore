@@ -29,3 +29,5 @@ dist/
 # others
 run_train_docker.sh
 robust_arm
+.codex
+
