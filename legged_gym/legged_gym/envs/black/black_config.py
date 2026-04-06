@@ -213,7 +213,7 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.03
-                min_scale = 0.5
+                min_scale = 0.8
                 max_scale = 1.0
 
             class smoothness:
@@ -258,7 +258,7 @@ class BlackCfg(LeggedRobotCfg):
             nominal_y = 0.155
             max_linear_offset_x = 0.12
             max_linear_offset_y = 0.08
-            vel_error_gain = 0.4
+            vel_error_gain = 0.3
             yaw_gain = 0.6
             max_yaw_offset = 0.06
             tracking_sigma = 0.08
@@ -273,19 +273,19 @@ class BlackCfg(LeggedRobotCfg):
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -3.0
+            orientation = -5.0
             dof_acc = -0.0
             joint_power = -1e-6
-            base_height = -3.0
+            base_height = -5.0
             foot_clearance = -2.0
-            action_rate = -0.05
+            action_rate = -0.15
             smoothness = -0.02
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
             stand_still = -1.2
-            torques = -1e-6
-            dof_vel = -1e-7
+            torques = -5e-6
+            dof_vel = -5e-7
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -1e-5
@@ -296,7 +296,7 @@ class BlackCfg(LeggedRobotCfg):
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
             progress = 0.5
-            raibert = 2.0
+            raibert = 1.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:

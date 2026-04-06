@@ -81,7 +81,7 @@ class BlackArmCfg(LeggedRobotCfg):
         curriculum_buffer_min = 256
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
-        heading_command = False # if true: compute ang vel command from heading error
+        heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -193,7 +193,7 @@ class BlackArmCfg(LeggedRobotCfg):
         trajectory_rand_enabled = True
         trajectory_joint_offset_range = [0.10, 0.18, 0.18, 0.15, 0.45]
         trajectory_time_scale_range = [0.7, 1.3]
-        task_mode_probs = [0.2, 0.5, 0.3]  # locomotion_only, manip_stationary, carry_move
+        task_mode_probs = [0.4, 0.3, 0.3]  # locomotion_only, manip_stationary, carry_move
         manip_lin_vel_x_range = [0.0, 0.0]
         manip_lin_vel_y_range = [0.0, 0.0]
         manip_ang_vel_yaw_range = [0.0, 0.0]
@@ -290,7 +290,7 @@ class BlackArmCfg(LeggedRobotCfg):
             nominal_y = 0.155
             max_linear_offset_x = 0.12
             max_linear_offset_y = 0.08
-            vel_error_gain = 0.4
+            vel_error_gain = 0.3
             yaw_gain = 0.6
             max_yaw_offset = 0.06
             tracking_sigma = 0.08
@@ -305,17 +305,17 @@ class BlackArmCfg(LeggedRobotCfg):
             tracking_ang_vel = 2.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.1
-            orientation = -10.0
+            orientation = -8.0
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -5.0
             foot_clearance = -3.0
-            action_rate = -0.08
-            smoothness = -0.02
+            action_rate = -0.12
+            smoothness = -0.025
             feet_air_time = 0.3
             collision = -0.05
             feet_stumble = -0.5
-            stand_still = -3.0
+            stand_still = -2.5
             torques = -1e-5
             dof_vel = -1e-7
             dof_pos_limits = -0.0
@@ -328,7 +328,7 @@ class BlackArmCfg(LeggedRobotCfg):
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
             progress = 0.5
-            raibert = 0.8
+            raibert = 2.0
 
 class BlackArmCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -349,7 +349,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 1.e-4 #5.e-4
+        learning_rate = 5.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
@@ -388,5 +388,5 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_black_arm'
-        max_iterations=2000
+        max_iterations=2500
          

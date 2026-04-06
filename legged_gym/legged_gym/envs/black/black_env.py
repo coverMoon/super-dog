@@ -904,7 +904,7 @@ class BlackEnv(LeggedRobot):
 
     def _reward_orientation(self):
         """
-        [修改版] 姿态惩罚
+        姿态惩罚
         利用特权观测的高度信息，在地形起伏大（如爬楼梯）时，
         降低对 Pitch (前后俯仰) 的惩罚，但保持 Roll (左右侧倾) 的严格惩罚。
         """
@@ -929,7 +929,7 @@ class BlackEnv(LeggedRobot):
         # Pitch 惩罚 (pitch_proj) 乘以动态系数
         
         # 注意：这里返回的是正数的惩罚项（在 config 中 scale 是负数）
-        penalty = torch.square(roll_proj) + torch.square(pitch_proj) * pitch_scale
+        penalty = torch.abs(roll_proj) + torch.abs(pitch_proj) * pitch_scale
 
         return penalty
 
