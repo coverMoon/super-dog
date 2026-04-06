@@ -227,14 +227,14 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.02
-                min_scale = 0.9
+                min_scale = 0.8
                 max_scale = 1.0
 
             class torques:
-                enabled = False
+                enabled = True
                 mode = "decay"
                 sigma = 0.05
-                min_scale = 0.6
+                min_scale = 0.8
                 max_scale = 1.0
 
             class progress:
@@ -278,14 +278,14 @@ class BlackCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -5.0
             foot_clearance = -2.0
-            action_rate = -0.15
+            action_rate = -0.1
             smoothness = -0.02
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
             stand_still = -1.2
             torques = -5e-6
-            dof_vel = -5e-7
+            dof_vel = -1e-7
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -1e-5

@@ -735,12 +735,20 @@ class BlackArmEnv(BlackEnv):
         return torch.sum((leg_torque - leg_limits * self.cfg.rewards.soft_torque_limit).clip(min=0.0), dim=1)
 
     def _reward_stand_still(self):
-        leg_pos = self.dof_pos[:, self.leg_dof_indices]
-        leg_vel = self.dof_vel[:, self.leg_dof_indices]
+        # Penalize motion at zero commands
+        # 判定静止条件
         is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1)
-        pos_error = torch.sum(torch.abs(leg_pos - self.default_leg_dof_pos), dim=1)
-        vel_error = torch.sum(torch.abs(leg_vel), dim=1)
-        return (pos_error + 0.08 * vel_error) * is_still
+
+        # 计算位置误差
+        pos_error = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
+
+        # 计算速度误差
+        vel_error = torch.sum(torch.abs(self.dof_vel), dim=1)
+
+        # 组合误差
+        error = pos_error + 0.05 * vel_error
+    
+        return error * is_still
 
     def _reward_all_joint_pos(self):
         leg_pos = self.dof_pos[:, self.leg_dof_indices]

@@ -81,7 +81,7 @@ class BlackArmCfg(LeggedRobotCfg):
         curriculum_buffer_min = 256
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
-        heading_command = True # if true: compute ang vel command from heading error
+        heading_command = False # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -300,9 +300,9 @@ class BlackArmCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -200.0
+            termination = -300.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 2.0
+            tracking_ang_vel = 1.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.1
             orientation = -8.0
@@ -310,18 +310,18 @@ class BlackArmCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -5.0
             foot_clearance = -3.0
-            action_rate = -0.12
+            action_rate = -0.2
             smoothness = -0.025
             feet_air_time = 0.3
             collision = -0.05
             feet_stumble = -0.5
-            stand_still = -2.5
+            stand_still = -1.0
             torques = -1e-5
             dof_vel = -1e-7
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -1e-5
-            trot = 2.0
+            trot = 1.0
             hip_pos = -0.8 
             all_joint_pos = -0.001
             foot_slip = -0.3
@@ -349,7 +349,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 5.e-4 #5.e-4
+        learning_rate = 1.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
