@@ -740,13 +740,13 @@ class BlackArmEnv(BlackEnv):
         is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
         # 计算位置误差
-        pos_error = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
+        pos_error = torch.sum(torch.abs(self.dof_pos[:, self.leg_dof_indices] - self.default_leg_dof_pos), dim=1)
 
         # 计算速度误差
-        vel_error = torch.sum(torch.abs(self.dof_vel), dim=1)
+        vel_error = torch.sum(torch.abs(self.dof_vel[:, self.leg_dof_indices]), dim=1)
 
         # 组合误差
-        error = pos_error + 0.05 * vel_error
+        error = pos_error + 0.08 * vel_error
     
         return error * is_still
 

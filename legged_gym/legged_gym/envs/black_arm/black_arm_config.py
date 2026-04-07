@@ -300,23 +300,23 @@ class BlackArmCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -300.0
+            termination = -500.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.0
+            tracking_ang_vel = 2.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.1
             orientation = -8.0
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -5.0
-            foot_clearance = -4.0
+            foot_clearance = -2.0
             action_rate = -0.2
-            smoothness = -0.025
+            smoothness = -0.02
             feet_air_time = 0.3
             collision = -0.05
             feet_stumble = -0.5
-            stand_still = -1.2
-            still_lin_vel = -4.0
+            stand_still = -3.0
+            still_lin_vel = -10.0
             torques = -1e-5
             dof_vel = -1e-7
             dof_pos_limits = -0.0
@@ -329,7 +329,7 @@ class BlackArmCfg(LeggedRobotCfg):
             # feet_spacing = -0.1
             foot_impact_vel = -0.1
             progress = 0.5
-            raibert = 2.0
+            raibert = 1.0
 
 class BlackArmCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -350,7 +350,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
         entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 1.e-4 #5.e-4
+        learning_rate = 5.e-4 #5.e-4
         schedule = 'adaptive' # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95

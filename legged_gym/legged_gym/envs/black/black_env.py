@@ -546,7 +546,8 @@ class BlackEnv(LeggedRobot):
         move_cmd = cmd_norm > 0.1
         cmd_dir = cmd_xy / torch.clamp(cmd_norm.unsqueeze(1), min=1e-6)
         progress_speed = torch.sum(self.base_lin_vel[:, :2] * cmd_dir, dim=1)
-        return torch.relu(progress_speed) * move_cmd.float()
+        bounded_progress = torch.clamp(progress_speed, min=0.0, max=cmd_norm)
+        return bounded_progress * move_cmd.float()
     
     def _reward_hip_pos(self):
         """ 
