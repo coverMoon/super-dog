@@ -193,7 +193,7 @@ class BlackArmCfg(LeggedRobotCfg):
         trajectory_rand_enabled = True
         trajectory_joint_offset_range = [0.10, 0.18, 0.18, 0.15, 0.45]
         trajectory_time_scale_range = [0.7, 1.3]
-        task_mode_probs = [0.4, 0.3, 0.3]  # locomotion_only, manip_stationary, carry_move
+        task_mode_probs = [0.25, 0.5, 0.25]  # locomotion_only, manip_stationary, carry_move
         manip_lin_vel_x_range = [0.0, 0.0]
         manip_lin_vel_y_range = [0.0, 0.0]
         manip_ang_vel_yaw_range = [0.0, 0.0]
@@ -231,7 +231,7 @@ class BlackArmCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        clearance_height_target = 0.08
+        clearance_height_target = 0.05
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -277,12 +277,12 @@ class BlackArmCfg(LeggedRobotCfg):
                 max_scale = 1.5
 
             class foot_clearance:
-                enabled = True
-                mode = "margin"
-                std_gain = 2.0
-                max_extra_clearance = 0.10
-                stance_gain = 0.5
-                swing_high_penalty_weight = 0.25
+                enabled = True  # 是否启用地形自适应抬脚
+                mode = "margin"  # 用地形相关的抬脚裕量
+                std_gain = 2.0  # 地形起伏到额外抬脚高度的增益
+                max_extra_clearance = 0.10  # 额外抬脚高度上限[m]
+                stance_gain = 0.5  # 支撑相高度容忍随裕量放宽的程度
+                swing_high_penalty_weight = 0.25  # 摆动相抬脚过高惩罚的权重
 
         class raibert:
             nominal_front_x = 0.21
@@ -309,13 +309,14 @@ class BlackArmCfg(LeggedRobotCfg):
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -5.0
-            foot_clearance = -3.0
+            foot_clearance = -4.0
             action_rate = -0.2
             smoothness = -0.025
             feet_air_time = 0.3
             collision = -0.05
             feet_stumble = -0.5
-            stand_still = -1.0
+            stand_still = -1.2
+            still_lin_vel = -4.0
             torques = -1e-5
             dof_vel = -1e-7
             dof_pos_limits = -0.0

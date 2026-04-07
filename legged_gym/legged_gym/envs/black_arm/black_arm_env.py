@@ -750,6 +750,10 @@ class BlackArmEnv(BlackEnv):
     
         return error * is_still
 
+    def _reward_still_lin_vel(self):
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+        return torch.sum(torch.abs(self.base_lin_vel[:, :2]), dim=1) * is_still
+
     def _reward_all_joint_pos(self):
         leg_pos = self.dof_pos[:, self.leg_dof_indices]
         return torch.sum(torch.square(leg_pos - self.default_leg_dof_pos), dim=1)

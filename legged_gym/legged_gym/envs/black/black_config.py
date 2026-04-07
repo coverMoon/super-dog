@@ -199,7 +199,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        clearance_height_target = 0.08
+        clearance_height_target = 0.05
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -213,21 +213,21 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.03
-                min_scale = 0.8
+                min_scale = 0.6
                 max_scale = 1.0
 
             class smoothness:
                 enabled = True
                 mode = "decay"
                 sigma = 0.02
-                min_scale = 0.9
+                min_scale = 0.8
                 max_scale = 1.0
 
             class action_rate:
                 enabled = True
                 mode = "decay"
                 sigma = 0.02
-                min_scale = 0.8
+                min_scale = 0.6
                 max_scale = 1.0
 
             class torques:
@@ -245,12 +245,12 @@ class BlackCfg(LeggedRobotCfg):
                 max_scale = 1.5
 
             class foot_clearance:
-                enabled = True
-                mode = "margin"
-                std_gain = 2.0
-                max_extra_clearance = 0.10
-                stance_gain = 0.5
-                swing_high_penalty_weight = 0.25
+                enabled = True  # 是否启用地形自适应抬脚
+                mode = "margin"  # 用地形相关的抬脚裕量
+                std_gain = 2.0  # 地形起伏到额外抬脚高度的增益
+                max_extra_clearance = 0.10  # 额外抬脚高度上限[m]
+                stance_gain = 0.5  # 支撑相高度容忍随裕量放宽的程度
+                swing_high_penalty_weight = 0.25  # 摆动相抬脚过高惩罚的权重
 
         class raibert:
             nominal_front_x = 0.21
@@ -277,7 +277,7 @@ class BlackCfg(LeggedRobotCfg):
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -5.0
-            foot_clearance = -2.0
+            foot_clearance = -4.0
             action_rate = -0.1
             smoothness = -0.02
             feet_air_time = 0.4
