@@ -213,28 +213,28 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.05
-                min_scale = 0.5
+                min_scale = 0.6
                 max_scale = 1.0
 
             class smoothness:
-                enabled = True
+                enabled = False
                 mode = "decay"
                 sigma = 0.2
                 min_scale = 0.9
                 max_scale = 1.0
 
             class action_rate:
-                enabled = True
+                enabled = False
                 mode = "decay"
-                sigma = 0.02
+                sigma = 0.05
                 min_scale = 0.8
                 max_scale = 1.0
 
             class torques:
-                enabled = True
+                enabled = False
                 mode = "decay"
                 sigma = 0.05
-                min_scale = 0.6
+                min_scale = 0.9
                 max_scale = 1.0
 
             class progress:
@@ -259,9 +259,9 @@ class BlackCfg(LeggedRobotCfg):
             max_linear_offset_x = 0.12
             max_linear_offset_y = 0.08
             vel_error_gain = 0.3
-            yaw_gain = 0.6
-            max_yaw_offset = 0.06
-            tracking_sigma = 0.08
+            yaw_gain = 0.8
+            max_yaw_offset = 0.08
+            tracking_sigma = 0.06
             late_swing_start = 0.35
             touchdown_gain = 0.4
             approach_bonus = 0.25
@@ -278,7 +278,7 @@ class BlackCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -3.0
             foot_clearance = -3.0
-            action_rate = -0.1
+            action_rate = -0.3
             smoothness = -0.02
             feet_air_time = 0.4
             collision = -0.05
@@ -294,7 +294,7 @@ class BlackCfg(LeggedRobotCfg):
             all_joint_pos = -0.001
             foot_slip = -0.3
             # feet_spacing = -0.1
-            foot_impact_vel = -0.1
+            foot_impact_vel = -1.0
             progress = 0.5
             raibert = 1.0
 
