@@ -154,7 +154,7 @@ class BlackCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -199,14 +199,14 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        clearance_height_target = 0.05
+        clearance_height_target = 0.06
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
         base_height_target = 0.43
         only_positive_rewards = False
         class terrain_adaptive:
-            enabled = True
+            enabled = False
             terrain_variability_clip = 0.10
 
             class orientation:
@@ -268,7 +268,7 @@ class BlackCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -0.0
+            termination = -200.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
@@ -278,8 +278,8 @@ class BlackCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -3.0
             foot_clearance = -3.0
-            action_rate = -0.3
-            smoothness = -0.02
+            action_rate = -0.01
+            smoothness = -0.01
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
@@ -294,7 +294,7 @@ class BlackCfg(LeggedRobotCfg):
             all_joint_pos = -0.001
             foot_slip = -0.3
             # feet_spacing = -0.1
-            foot_impact_vel = -1.0
+            foot_impact_vel = -5.0
             progress = 0.5
             raibert = 1.0
 
@@ -354,7 +354,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 100
+        num_steps_per_env = 24
         experiment_name = 'rough_black_dog'
-        max_iterations=3000
+        max_iterations=500
          

@@ -21,20 +21,37 @@ class BlackArmCfg(LeggedRobotCfg):
         # 2. PD 参数
         # 刚度 (P Gain)
         stiffness = {
-            'FL_hip_joint': 50.0, 'RL_hip_joint': 50.0, 'FR_hip_joint': 50.0, 'RR_hip_joint': 50.0,
-            'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
-            'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
+            'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
+            'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
+            'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
             'arm_yaw_joint': 30.0, 'arm_pitch_1_joint': 30.0, 'arm_pitch_2_joint': 30.0,
             'arm_pitch_3_joint': 20.0, 'arm_roll_joint': 10.0,
         }
         # 阻尼 (D Gain)
         damping = {
-            'FL_hip_joint': 1.5, 'RL_hip_joint': 1.5, 'FR_hip_joint': 1.5, 'RR_hip_joint': 1.5,
-            'FL_thigh_joint': 1.5, 'RL_thigh_joint': 1.5, 'FR_thigh_joint': 1.5, 'RR_thigh_joint': 1.5,
-            'FL_calf_joint': 1.5, 'RL_calf_joint': 1.5, 'FR_calf_joint': 1.5, 'RR_calf_joint': 1.5,
+            'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
+            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
+            'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
             'arm_yaw_joint': 1.0, 'arm_pitch_1_joint': 1.0, 'arm_pitch_2_joint': 1.0,
             'arm_pitch_3_joint': 0.8, 'arm_roll_joint': 0.5,
         }
+
+        # # 刚度 (P Gain)
+        # stiffness = {
+        #     'FL_hip_joint': 50.0, 'RL_hip_joint': 50.0, 'FR_hip_joint': 50.0, 'RR_hip_joint': 50.0,
+        #     'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
+        #     'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
+        #     'arm_yaw_joint': 30.0, 'arm_pitch_1_joint': 30.0, 'arm_pitch_2_joint': 30.0,
+        #     'arm_pitch_3_joint': 20.0, 'arm_roll_joint': 10.0,
+        # }
+        # # 阻尼 (D Gain)
+        # damping = {
+        #     'FL_hip_joint': 1.5, 'RL_hip_joint': 1.5, 'FR_hip_joint': 1.5, 'RR_hip_joint': 1.5,
+        #     'FL_thigh_joint': 1.5, 'RL_thigh_joint': 1.5, 'FR_thigh_joint': 1.5, 'RR_thigh_joint': 1.5,
+        #     'FL_calf_joint': 1.5, 'RL_calf_joint': 1.5, 'FR_calf_joint': 1.5, 'RR_calf_joint': 1.5,
+        #     'arm_yaw_joint': 1.0, 'arm_pitch_1_joint': 1.0, 'arm_pitch_2_joint': 1.0,
+        #     'arm_pitch_3_joint': 0.8, 'arm_roll_joint': 0.5,
+        # }
 
         # # 刚度 (P Gain)
         # stiffness = {
@@ -231,7 +248,7 @@ class BlackArmCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.5
-        clearance_height_target = 0.05
+        clearance_height_target = 0.06
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -387,7 +404,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 100
+        num_steps_per_env = 24
         experiment_name = 'rough_black_arm'
         max_iterations=2500
          

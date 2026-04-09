@@ -230,4 +230,4 @@ class HIMPPO:
             mean_sym_loss =0
         self.storage.clear()
 
-        return mean_value_loss, mean_surrogate_loss, estimation_loss, swap_loss,mean_sym_loss
+        return mean_value_loss, mean_surrogate_loss, mean_estimation_loss, mean_swap_loss, mean_sym_loss
