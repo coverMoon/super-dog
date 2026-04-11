@@ -154,7 +154,7 @@ class BlackCfg(LeggedRobotCfg):
             height_measurements = 0.1
 
     class terrain:
-        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 25 # [m]
@@ -198,22 +198,22 @@ class BlackCfg(LeggedRobotCfg):
         stuck_grace_s = 1.0
 
     class rewards(LeggedRobotCfg.rewards):
-        cycle_time = 0.5
-        clearance_height_target = 0.06
+        cycle_time = 0.8
+        clearance_height_target = 0.08
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
         base_height_target = 0.43
         only_positive_rewards = False
         class terrain_adaptive:
-            enabled = False
+            enabled = True
             terrain_variability_clip = 0.10
 
             class orientation:
                 enabled = True
                 mode = "decay"
-                sigma = 0.05
-                min_scale = 0.6
+                sigma = 0.1
+                min_scale = 0.2
                 max_scale = 1.0
 
             class smoothness:
@@ -256,11 +256,11 @@ class BlackCfg(LeggedRobotCfg):
             nominal_front_x = 0.21
             nominal_rear_x = -0.21
             nominal_y = 0.155
-            max_linear_offset_x = 0.12
+            max_linear_offset_x = 0.16
             max_linear_offset_y = 0.08
             vel_error_gain = 0.3
             yaw_gain = 0.8
-            max_yaw_offset = 0.08
+            max_yaw_offset = 0.06
             tracking_sigma = 0.06
             late_swing_start = 0.35
             touchdown_gain = 0.4
@@ -268,18 +268,18 @@ class BlackCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -200.0
+            termination = -0.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -3.0
+            orientation = -5.0
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -3.0
             foot_clearance = -3.0
-            action_rate = -0.01
-            smoothness = -0.01
+            action_rate = -0.4
+            smoothness = -0.02
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
@@ -290,11 +290,11 @@ class BlackCfg(LeggedRobotCfg):
             dof_vel_limits = -0.0
             torque_limits = -1e-5
             trot = 1.0
-            hip_pos = -0.8 
+            hip_pos = -0.5 
             all_joint_pos = -0.001
             foot_slip = -0.3
             # feet_spacing = -0.1
-            foot_impact_vel = -5.0
+            foot_impact_vel = -10.0
             progress = 0.5
             raibert = 1.0
 
@@ -350,11 +350,11 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.8
+        sym_coef = 0.3
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 24
+        num_steps_per_env = 100
         experiment_name = 'rough_black_dog'
         max_iterations=500
          

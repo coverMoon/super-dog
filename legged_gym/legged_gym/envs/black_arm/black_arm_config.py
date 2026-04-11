@@ -247,8 +247,8 @@ class BlackArmCfg(LeggedRobotCfg):
         stuck_grace_s = 1.0
 
     class rewards(LeggedRobotCfg.rewards):
-        cycle_time = 0.5
-        clearance_height_target = 0.06
+        cycle_time = 0.8
+        clearance_height_target = 0.08
         soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -340,7 +340,7 @@ class BlackArmCfg(LeggedRobotCfg):
             dof_vel_limits = -0.0
             torque_limits = -1e-5
             trot = 1.0
-            hip_pos = -0.8 
+            hip_pos = -0.5 
             all_joint_pos = -0.001
             foot_slip = -0.3
             # feet_spacing = -0.1
@@ -404,7 +404,7 @@ class BlackArmCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 24
+        num_steps_per_env = 100
         experiment_name = 'rough_black_arm'
-        max_iterations=2500
+        max_iterations=3000
          
