@@ -68,12 +68,12 @@ class BlackCfg(LeggedRobotCfg):
 
     class asset(LeggedRobotCfg.asset):
         # 3. 指定 URDF 路径
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/black/urdf/black_description.urdf'
+        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/black/black_description.urdf'
         name = "black"
         foot_name = "foot"
-        penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base", "thigh"]
-        privileged_contacts_on = ["base", "thigh", "calf"]
+        penalize_contacts_on = ["thigh", "calf", "trunk"]
+        terminate_after_contacts_on = ["trunk", "thigh"]
+        privileged_contacts_on = ["trunk", "thigh", "calf"]
         self_collisions = 1 # 1=disable
 
     class commands:
