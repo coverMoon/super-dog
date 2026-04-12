@@ -96,9 +96,9 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="0.06 0.015 -0.14" rpy="0 0 0" />
+      <origin xyz="0.06 0.015 -0.17" rpy="0 0 0" />
       <geometry>
-        <box size="0.035 0.05 0.165" />
+        <box size="0.035 0.05 0.205" />
       </geometry>
     </collision>
     <inertial>
@@ -121,13 +121,13 @@
     <collision>
       <origin xyz="0 -0.025 -0.09" rpy="-0.3548254 0 0" />
       <geometry>
-        <cylinder radius="0.014" length="0.14" />
+        <cylinder radius="0.014" length="0.13" />
       </geometry>
     </collision>
     <collision>
       <origin xyz="0 -0.052 -0.178" rpy="0.0345575 0 0" />
       <geometry>
-        <cylinder radius="0.012" length="0.05" />
+        <cylinder radius="0.014" length="0.05" />
       </geometry>
     </collision>
     <collision>
@@ -156,7 +156,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.03" />
+        <sphere radius="0.02" />
       </geometry>
     </collision>
     <inertial>
@@ -193,9 +193,9 @@
       </geometry>
     </visual>
     <collision>
-      <origin xyz="0.06 -0.015 -0.14" rpy="0 0 0" />
+      <origin xyz="0.06 -0.015 -0.17" rpy="0 0 0" />
       <geometry>
-        <box size="0.035 0.05 0.165" />
+        <box size="0.035 0.05 0.205" />
       </geometry>
     </collision>
     <inertial>
@@ -215,13 +215,13 @@
     <collision>
       <origin xyz="0 0.025 -0.09" rpy="0.3548254 0 0" />
       <geometry>
-        <cylinder radius="0.014" length="0.14" />
+        <cylinder radius="0.014" length="0.13" />
       </geometry>
     </collision>
     <collision>
       <origin xyz="0 0.052 -0.178" rpy="0.0345575 0 0" />
       <geometry>
-        <cylinder radius="0.012" length="0.05" />
+        <cylinder radius="0.014" length="0.05" />
       </geometry>
     </collision>
     <collision>
@@ -250,7 +250,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.03" />
+        <sphere radius="0.02" />
       </geometry>
     </collision>
     <inertial>
@@ -293,9 +293,9 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="0.06 -0.015 -0.14" rpy="0 0 0" />
+      <origin xyz="0.06 -0.015 -0.17" rpy="0 0 0" />
       <geometry>
-        <box size="0.035 0.05 0.165" />
+        <box size="0.035 0.05 0.205" />
       </geometry>
     </collision>
     <inertial>
@@ -318,13 +318,13 @@
     <collision>
       <origin xyz="0 0.025 -0.09" rpy="0.3548254 0 0" />
       <geometry>
-        <cylinder radius="0.014" length="0.14" />
+        <cylinder radius="0.014" length="0.13" />
       </geometry>
     </collision>
     <collision>
       <origin xyz="0 0.052 -0.178" rpy="-0.0345575 0 0" />
       <geometry>
-        <cylinder radius="0.012" length="0.05" />
+        <cylinder radius="0.014" length="0.05" />
       </geometry>
     </collision>
     <collision>
@@ -353,7 +353,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.03" />
+        <sphere radius="0.02" />
       </geometry>
     </collision>
     <inertial>
@@ -396,9 +396,9 @@
       </material>
     </visual>
     <collision>
-      <origin xyz="0.06 0.015 -0.14" rpy="0 0 0" />
+      <origin xyz="0.06 0.015 -0.17" rpy="0 0 0" />
       <geometry>
-        <box size="0.035 0.05 0.165" />
+        <box size="0.035 0.05 0.205" />
       </geometry>
     </collision>
     <inertial>
@@ -421,13 +421,13 @@
     <collision>
       <origin xyz="0 -0.025 -0.09" rpy="-0.3548254 0 0" />
       <geometry>
-        <cylinder radius="0.014" length="0.14" />
+        <cylinder radius="0.014" length="0.13" />
       </geometry>
     </collision>
     <collision>
       <origin xyz="0 -0.052 -0.178" rpy="0.0345575 0 0" />
       <geometry>
-        <cylinder radius="0.012" length="0.05" />
+        <cylinder radius="0.014" length="0.05" />
       </geometry>
     </collision>
     <collision>
@@ -456,7 +456,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.03" />
+        <sphere radius="0.02" />
       </geometry>
     </collision>
     <inertial>
