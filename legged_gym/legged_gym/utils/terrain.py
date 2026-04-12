@@ -148,7 +148,7 @@ class Terrain:
 
             terrain_utils.pyramid_stairs_terrain(
                 terrain,
-                step_width=current_step_width,
+                step_width=0.3,
                 step_height=step_height,
                 platform_size=3.,
             )

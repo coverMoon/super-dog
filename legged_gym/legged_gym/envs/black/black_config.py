@@ -71,10 +71,10 @@ class BlackCfg(LeggedRobotCfg):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/black/black_description.urdf'
         name = "black"
         foot_name = "foot"
-        penalize_contacts_on = ["thigh", "calf", "trunk"]
-        terminate_after_contacts_on = ["trunk", "thigh"]
-        privileged_contacts_on = ["trunk", "thigh", "calf"]
-        self_collisions = 1 # 1=disable
+        penalize_contacts_on = ["thigh", "calf", "base"]
+        terminate_after_contacts_on = ["base", "thigh", "calf"]
+        privileged_contacts_on = ["base", "thigh", "calf"]
+        self_collisions = 0 # 1=disable
 
     class commands:
         curriculum = True
@@ -278,8 +278,8 @@ class BlackCfg(LeggedRobotCfg):
             joint_power = -1e-6
             base_height = -3.0
             foot_clearance = -3.0
-            action_rate = -0.3
-            smoothness = -0.02
+            action_rate = -0.25
+            smoothness = -0.015
             feet_air_time = 0.4
             collision = -0.05
             feet_stumble = -0.5
