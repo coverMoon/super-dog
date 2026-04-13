@@ -480,6 +480,65 @@ class BlackEnv(LeggedRobot):
                           self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs]), 
                           dim=-1)[env_ids]
 
+    def _get_under_body_height_samples(self, env_ids=None):
+        if self.cfg.terrain.mesh_type == 'plane':
+            num_envs = len(env_ids) if env_ids is not None else self.num_envs
+            return torch.zeros(num_envs, self.num_base_height_points, device=self.device)
+        elif self.cfg.terrain.mesh_type == 'none':
+            raise NameError("Can't measure height with terrain mesh type 'none'")
+
+        if env_ids is not None:
+            points = quat_apply_yaw(
+                self.base_quat[env_ids].repeat(1, self.num_base_height_points),
+                self.base_height_points[env_ids],
+            ) + self.root_states[env_ids, :3].unsqueeze(1)
+            num_envs = len(env_ids)
+        else:
+            points = quat_apply_yaw(
+                self.base_quat.repeat(1, self.num_base_height_points),
+                self.base_height_points,
+            ) + self.root_states[:, :3].unsqueeze(1)
+            num_envs = self.num_envs
+
+        points += self.terrain.cfg.border_size
+        points = (points / self.terrain.cfg.horizontal_scale).long()
+        px = points[:, :, 0].view(-1)
+        py = points[:, :, 1].view(-1)
+        px = torch.clip(px, 0, self.height_samples.shape[0] - 2)
+        py = torch.clip(py, 0, self.height_samples.shape[1] - 2)
+
+        heights1 = self.height_samples[px, py]
+        heights2 = self.height_samples[px + 1, py]
+        heights3 = self.height_samples[px, py + 1]
+        heights = torch.min(heights1, heights2)
+        heights = torch.min(heights, heights3)
+
+        return heights.view(num_envs, -1) * self.terrain.cfg.vertical_scale
+
+    def _get_terrain_variability(self):
+        cfg = self.cfg.rewards.terrain_adaptive
+        if not cfg.enabled:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        under_body_heights = self._get_under_body_height_samples()
+        terrain_variability = torch.std(under_body_heights, dim=1)
+        return torch.clamp(terrain_variability, min=0.0, max=cfg.terrain_variability_clip)
+
+    def _get_adaptive_decay_scale(self, cfg_node, terrain_variability):
+        if not (self.cfg.rewards.terrain_adaptive.enabled and cfg_node.enabled):
+            return torch.ones_like(terrain_variability)
+
+        scale = torch.exp(-torch.square(terrain_variability) / cfg_node.sigma)
+        return torch.clamp(scale, min=cfg_node.min_scale, max=cfg_node.max_scale)
+
+    def _get_clearance_margin(self, terrain_variability):
+        cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
+        if not (self.cfg.rewards.terrain_adaptive.enabled and cfg.enabled):
+            return torch.zeros(self.num_envs, 1, device=self.device)
+
+        extra_clearance = cfg.std_gain * terrain_variability.unsqueeze(1)
+        return torch.clamp(extra_clearance, min=0.0, max=cfg.max_extra_clearance)
+
     # ----------------------------------------------------------------------
     # 自定义奖励函数区域
     # ----------------------------------------------------------------------
@@ -656,65 +715,6 @@ class BlackEnv(LeggedRobot):
         impact_vel = torch.clamp(-self.feet_vel[:, :, 2] - 0.2, min=0.0)
         return torch.sum(torch.square(impact_vel) * first_contact.float(), dim=1)
 
-    def _get_under_body_height_samples(self, env_ids=None):
-        if self.cfg.terrain.mesh_type == 'plane':
-            num_envs = len(env_ids) if env_ids is not None else self.num_envs
-            return torch.zeros(num_envs, self.num_base_height_points, device=self.device)
-        elif self.cfg.terrain.mesh_type == 'none':
-            raise NameError("Can't measure height with terrain mesh type 'none'")
-
-        if env_ids is not None:
-            points = quat_apply_yaw(
-                self.base_quat[env_ids].repeat(1, self.num_base_height_points),
-                self.base_height_points[env_ids],
-            ) + self.root_states[env_ids, :3].unsqueeze(1)
-            num_envs = len(env_ids)
-        else:
-            points = quat_apply_yaw(
-                self.base_quat.repeat(1, self.num_base_height_points),
-                self.base_height_points,
-            ) + self.root_states[:, :3].unsqueeze(1)
-            num_envs = self.num_envs
-
-        points += self.terrain.cfg.border_size
-        points = (points / self.terrain.cfg.horizontal_scale).long()
-        px = points[:, :, 0].view(-1)
-        py = points[:, :, 1].view(-1)
-        px = torch.clip(px, 0, self.height_samples.shape[0] - 2)
-        py = torch.clip(py, 0, self.height_samples.shape[1] - 2)
-
-        heights1 = self.height_samples[px, py]
-        heights2 = self.height_samples[px + 1, py]
-        heights3 = self.height_samples[px, py + 1]
-        heights = torch.min(heights1, heights2)
-        heights = torch.min(heights, heights3)
-
-        return heights.view(num_envs, -1) * self.terrain.cfg.vertical_scale
-
-    def _get_terrain_variability(self):
-        cfg = self.cfg.rewards.terrain_adaptive
-        if not cfg.enabled:
-            return torch.zeros(self.num_envs, device=self.device)
-
-        under_body_heights = self._get_under_body_height_samples()
-        terrain_variability = torch.std(under_body_heights, dim=1)
-        return torch.clamp(terrain_variability, min=0.0, max=cfg.terrain_variability_clip)
-
-    def _get_adaptive_decay_scale(self, cfg_node, terrain_variability):
-        if not (self.cfg.rewards.terrain_adaptive.enabled and cfg_node.enabled):
-            return torch.ones_like(terrain_variability)
-
-        scale = torch.exp(-torch.square(terrain_variability) / cfg_node.sigma)
-        return torch.clamp(scale, min=cfg_node.min_scale, max=cfg_node.max_scale)
-
-    def _get_clearance_margin(self, terrain_variability):
-        cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
-        if not (self.cfg.rewards.terrain_adaptive.enabled and cfg.enabled):
-            return torch.zeros(self.num_envs, 1, device=self.device)
-
-        extra_clearance = cfg.std_gain * terrain_variability.unsqueeze(1)
-        return torch.clamp(extra_clearance, min=0.0, max=cfg.max_extra_clearance)
-
     # def _reward_foot_clearance(self):
     #     """
     #     机身坐标系下的最小安全抬脚高度惩罚。
@@ -833,7 +833,7 @@ class BlackEnv(LeggedRobot):
         ).view(1, 1, 2)
         target_xy = self.nominal_foothold_xy.unsqueeze(0) + linear_drive * max_linear_offset
 
-        yaw_limit = 2.0 if self.cfg.commands.heading_command else max(
+        yaw_limit = max(
             abs(self.command_ranges["ang_vel_yaw"][0]),
             abs(self.command_ranges["ang_vel_yaw"][1]),
             1e-6,

@@ -217,17 +217,17 @@ class BlackCfg(LeggedRobotCfg):
                 max_scale = 1.0
 
             class smoothness:
-                enabled = False
+                enabled = True
                 mode = "decay"
                 sigma = 0.2
                 min_scale = 0.9
                 max_scale = 1.0
 
             class action_rate:
-                enabled = False
+                enabled = True
                 mode = "decay"
-                sigma = 0.05
-                min_scale = 0.8
+                sigma = 0.01
+                min_scale = 0.20
                 max_scale = 1.0
 
             class torques:
@@ -248,7 +248,7 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True  # 是否启用地形自适应抬脚
                 mode = "margin"  # 用地形相关的抬脚裕量
                 std_gain = 2.0  # 地形起伏到额外抬脚高度的增益
-                max_extra_clearance = 0.10  # 额外抬脚高度上限[m]
+                max_extra_clearance = 0.15  # 额外抬脚高度上限[m]
                 stance_gain = 0.5  # 支撑相高度容忍随裕量放宽的程度
                 swing_high_penalty_weight = 0.25  # 摆动相抬脚过高惩罚的权重
 
@@ -259,8 +259,8 @@ class BlackCfg(LeggedRobotCfg):
             max_linear_offset_x = 0.16
             max_linear_offset_y = 0.08
             vel_error_gain = 0.3
-            yaw_gain = 0.8
-            max_yaw_offset = 0.06
+            yaw_gain = 1.0
+            max_yaw_offset = 0.08
             tracking_sigma = 0.06
             late_swing_start = 0.35
             touchdown_gain = 0.4
@@ -268,7 +268,7 @@ class BlackCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -50.0
+            termination = -100.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
@@ -277,13 +277,13 @@ class BlackCfg(LeggedRobotCfg):
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -3.0
-            foot_clearance = -3.0
-            action_rate = -0.25
-            smoothness = -0.015
-            feet_air_time = 0.4
+            foot_clearance = -5.0
+            action_rate = -0.3
+            smoothness = -0.01
+            feet_air_time = 1.0
             collision = -0.05
-            feet_stumble = -0.5
-            stand_still = -1.2
+            feet_stumble = -1.0
+            stand_still = -1.0
             torques = -1e-7
             dof_vel = -1e-7
             dof_pos_limits = -10.0
@@ -350,7 +350,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.6
+        sym_coef = 0.5
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
