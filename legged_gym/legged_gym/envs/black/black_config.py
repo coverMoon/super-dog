@@ -72,7 +72,7 @@ class BlackCfg(LeggedRobotCfg):
         name = "black"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base", "thigh", "calf"]
+        terminate_after_contacts_on = ["base", "thigh"]
         privileged_contacts_on = ["base", "thigh", "calf"]
         self_collisions = 0 # 1=disable
 
@@ -207,13 +207,13 @@ class BlackCfg(LeggedRobotCfg):
         only_positive_rewards = False
         class terrain_adaptive:
             enabled = True
-            terrain_variability_clip = 0.10
+            terrain_variability_clip = 0.30
 
             class orientation:
                 enabled = True
                 mode = "decay"
-                sigma = 0.1
-                min_scale = 0.2
+                sigma = 0.009
+                min_scale = 0.1
                 max_scale = 1.0
 
             class smoothness:
@@ -268,12 +268,12 @@ class BlackCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -0.0
+            termination = -50.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
             lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -5.0
+            orientation = -3.0
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -3.0
@@ -284,9 +284,9 @@ class BlackCfg(LeggedRobotCfg):
             collision = -0.05
             feet_stumble = -0.5
             stand_still = -1.2
-            torques = -5e-6
+            torques = -1e-7
             dof_vel = -1e-7
-            dof_pos_limits = -0.0
+            dof_pos_limits = -10.0
             dof_vel_limits = -0.0
             torque_limits = -1e-5
             trot = 0.5
@@ -350,11 +350,11 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.3
+        sym_coef = 0.6
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_black_dog'
-        max_iterations=500
+        max_iterations=1000
          
