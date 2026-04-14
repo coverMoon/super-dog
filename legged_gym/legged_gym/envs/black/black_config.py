@@ -74,7 +74,7 @@ class BlackCfg(LeggedRobotCfg):
         penalize_contacts_on = ["thigh", "calf", "base"]
         terminate_after_contacts_on = ["base", "thigh"]
         privileged_contacts_on = ["base", "thigh", "calf"]
-        self_collisions = 0 # 1=disable
+        self_collisions = 1 # 1=disable
 
     class commands:
         curriculum = True
@@ -213,7 +213,7 @@ class BlackCfg(LeggedRobotCfg):
                 enabled = True
                 mode = "decay"
                 sigma = 0.009
-                min_scale = 0.1
+                min_scale = 0.15
                 max_scale = 1.0
 
             class smoothness:
@@ -257,12 +257,13 @@ class BlackCfg(LeggedRobotCfg):
             nominal_rear_x = -0.21
             nominal_y = 0.155
             max_linear_offset_x = 0.16
-            max_linear_offset_y = 0.08
+            max_linear_offset_y = 0.06
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.08
+            max_yaw_offset = 0.10
             tracking_sigma = 0.06
-            late_swing_start = 0.35
+            late_swing_start_x = 0.35
+            late_swing_start_latyaw = 0.0
             touchdown_gain = 0.4
             approach_bonus = 0.25
             max_approach_speed = 0.4
@@ -277,9 +278,9 @@ class BlackCfg(LeggedRobotCfg):
             dof_acc = -0.0
             joint_power = -1e-6
             base_height = -3.0
-            foot_clearance = -5.0
+            foot_clearance = -10.0
             action_rate = -0.3
-            smoothness = -0.01
+            smoothness = -0.012
             feet_air_time = 1.0
             collision = -0.05
             feet_stumble = -1.0
@@ -289,14 +290,14 @@ class BlackCfg(LeggedRobotCfg):
             dof_pos_limits = -10.0
             dof_vel_limits = -0.0
             torque_limits = -1e-5
-            trot = 0.5
+            trot = 1.0
             hip_pos = -0.5 
             all_joint_pos = -0.001
             foot_slip = -0.3
             # feet_spacing = -0.1
             foot_impact_vel = -10.0
             progress = 1.0
-            raibert = 0.5
+            raibert = 1.5
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -350,7 +351,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         ]
         act_permutation = [ -3, -4, -5, -0.0001, -1, -2, -9, -10, -11,-6, -7, -8,]#关节电机的对陈关系
         frame_stack = 6
-        sym_coef = 0.5
+        sym_coef = 0.8
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''

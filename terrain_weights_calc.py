@@ -32,7 +32,7 @@ TERM_CONFIGS = {
     "action_rate": {
         "kind": "decay",
         "sigma": 0.01,
-        "min_scale": 0.20,
+        "min_scale": 0.15,
         "max_scale": 1.00,
         "original_scale": -0.3,
         "adaptive_label": "action_rate_scale",

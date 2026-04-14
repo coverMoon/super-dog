@@ -849,31 +849,79 @@ class BlackEnv(LeggedRobot):
         phase = self._get_phase().unsqueeze(1)
         feet_phases = (phase + self.foot_phase_offsets.unsqueeze(0)) % 1.0
         swing_progress = torch.clamp((feet_phases - 0.5) * 2.0, min=0.0, max=1.0)
-        late_swing = torch.clamp(
-            (swing_progress - cfg.late_swing_start) / max(1e-6, 1.0 - cfg.late_swing_start),
+
+        late_swing_start_x = getattr(cfg, "late_swing_start_x", getattr(cfg, "late_swing_start", 0.35))
+        late_swing_start_latyaw = getattr(cfg, "late_swing_start_latyaw", getattr(cfg, "late_swing_start", 0.15))
+        late_swing_x = torch.clamp(
+            (swing_progress - late_swing_start_x) / max(1e-6, 1.0 - late_swing_start_x),
+            min=0.0,
+            max=1.0,
+        )
+        late_swing_latyaw = torch.clamp(
+            (swing_progress - late_swing_start_latyaw) / max(1e-6, 1.0 - late_swing_start_latyaw),
             min=0.0,
             max=1.0,
         )
 
         contact_force_z = self.contact_forces[:, self.feet_indices, 2]
         contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
-        planning_weight = late_swing * (1.0 + cfg.touchdown_gain * contact_prob)
+        touchdown_weight = 1.0 + cfg.touchdown_gain * contact_prob
+        planning_weight_x = late_swing_x * touchdown_weight
+        planning_weight_latyaw = late_swing_latyaw * touchdown_weight
 
-        xy_error = foot_pos_body[:, :, :2] - target_xy
-        tracking_reward = torch.exp(
-            -torch.sum(torch.square(xy_error), dim=2) / max(cfg.tracking_sigma ** 2, 1e-6)
+        nominal_xy = self.nominal_foothold_xy.unsqueeze(0)
+        x_offset = linear_drive[:, :, 0:1] * cfg.max_linear_offset_x
+        lateral_offset = torch.cat(
+            (
+                torch.zeros_like(x_offset),
+                linear_drive[:, :, 1:2] * cfg.max_linear_offset_y,
+            ),
+            dim=2,
+        )
+        yaw_offset = cfg.max_yaw_offset * cfg.yaw_gain * yaw_norm * yaw_basis.unsqueeze(0)
+
+        x_target = nominal_xy[:, :, 0:1] + x_offset
+        x_error = foot_pos_body[:, :, 0:1] - x_target
+        tracking_reward_x = torch.exp(
+            -torch.square(x_error.squeeze(2)) / max(cfg.tracking_sigma ** 2, 1e-6)
         )
 
-        target_dir = target_xy - foot_pos_body[:, :, :2]
-        target_dir = target_dir / torch.clamp(torch.norm(target_dir, dim=2, keepdim=True), min=1e-6)
-        approach_speed = torch.sum(foot_vel_body[:, :, :2] * target_dir, dim=2)
-        approach_bonus = torch.clamp(approach_speed, min=0.0, max=cfg.max_approach_speed) / max(
+        latyaw_target = lateral_offset + yaw_offset
+        latyaw_actual = torch.cat(
+            (
+                foot_pos_body[:, :, 0:1] - x_target,
+                foot_pos_body[:, :, 1:2] - nominal_xy[:, :, 1:2],
+            ),
+            dim=2,
+        )
+        latyaw_error = latyaw_actual - latyaw_target
+        tracking_reward_latyaw = torch.exp(
+            -torch.sum(torch.square(latyaw_error), dim=2) / max(cfg.tracking_sigma ** 2, 1e-6)
+        )
+
+        target_dir_x = torch.sign(x_target - foot_pos_body[:, :, 0:1])
+        approach_speed_x = (foot_vel_body[:, :, 0:1] * target_dir_x).squeeze(2)
+        approach_bonus_x = torch.clamp(approach_speed_x, min=0.0, max=cfg.max_approach_speed) / max(
             cfg.max_approach_speed, 1e-6
         )
 
-        reward = planning_weight * (
-            tracking_reward + cfg.approach_bonus * approach_bonus
+        target_dir_latyaw = latyaw_target - latyaw_actual
+        target_dir_latyaw = target_dir_latyaw / torch.clamp(
+            torch.norm(target_dir_latyaw, dim=2, keepdim=True),
+            min=1e-6,
         )
+        approach_speed_latyaw = torch.sum(foot_vel_body[:, :, :2] * target_dir_latyaw, dim=2)
+        approach_bonus_latyaw = torch.clamp(approach_speed_latyaw, min=0.0, max=cfg.max_approach_speed) / max(
+            cfg.max_approach_speed, 1e-6
+        )
+
+        reward_x = planning_weight_x * (
+            tracking_reward_x + cfg.approach_bonus * approach_bonus_x
+        )
+        reward_latyaw = planning_weight_latyaw * (
+            tracking_reward_latyaw + cfg.approach_bonus * approach_bonus_latyaw
+        )
+        reward = 0.5 * (reward_x + reward_latyaw)
         return torch.sum(reward, dim=1) * move_cmd.float()
 
     def _reward_feet_air_time(self):

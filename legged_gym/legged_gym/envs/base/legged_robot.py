@@ -478,7 +478,7 @@ class LeggedRobot(BaseTask):
                 abs(self.command_ranges["ang_vel_yaw"][1]),
                 1e-6,
             )
-            self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -yaw_limit, yaw_limit)
+            self.commands[:, 2] = torch.clip(2*wrap_to_pi(self.commands[:, 3] - heading), -yaw_limit, yaw_limit)
 
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
