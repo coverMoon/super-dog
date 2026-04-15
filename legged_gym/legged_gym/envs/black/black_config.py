@@ -280,7 +280,7 @@ class BlackCfg(LeggedRobotCfg):
             base_height = -3.0
             foot_clearance = -10.0
             action_rate = -0.3
-            smoothness = -0.012
+            smoothness = -0.01
             feet_air_time = 1.0
             collision = -0.05
             feet_stumble = -1.0
