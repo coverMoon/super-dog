@@ -235,7 +235,7 @@ class BlackWEnv(BlackEnv):
         return target * self.wheel_forward_sign.unsqueeze(0)
 
     def _reward_stand_still(self):
-        is_still = torch.norm(self.commands[:, :2], dim=1) < 0.1
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
         pos_error = torch.sum(
             torch.abs(self.dof_pos[:, self.leg_dof_indices] - self.default_dof_pos[:, self.leg_dof_indices]),
             dim=1,

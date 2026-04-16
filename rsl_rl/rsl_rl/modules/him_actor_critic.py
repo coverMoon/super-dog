@@ -81,6 +81,8 @@ class HIMActorCritic(nn.Module):
                         critic_hidden_dims=[512, 256, 128],
                         activation='elu',
                         init_noise_std=1.0,
+                        action_std_groups=None,
+                        action_std_group_init_noise_std=None,
                         **kwargs):
         if kwargs:
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
@@ -129,7 +131,33 @@ class HIMActorCritic(nn.Module):
         print(f'Estimator: {self.estimator.encoder}')
 
         # Action noise
-        self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
+        self.std_group_indices = None
+        self.std_group_names = None
+        if action_std_groups is not None:
+            if len(action_std_groups) == 0:
+                raise ValueError("action_std_groups must not be empty")
+
+            flat_indices = [idx for group in action_std_groups for idx in group]
+            expected_indices = list(range(num_actions))
+            if sorted(flat_indices) != expected_indices:
+                raise ValueError(
+                    f"action_std_groups must partition [0, {num_actions - 1}], got {sorted(flat_indices)}"
+                )
+
+            if action_std_group_init_noise_std is None:
+                group_init_std = [float(init_noise_std)] * len(action_std_groups)
+            else:
+                if len(action_std_group_init_noise_std) != len(action_std_groups):
+                    raise ValueError(
+                        "action_std_group_init_noise_std must have the same length as action_std_groups"
+                    )
+                group_init_std = [float(value) for value in action_std_group_init_noise_std]
+
+            self.std_group_indices = [list(group) for group in action_std_groups]
+            self.std_group_names = [f"group_{i}" for i in range(len(action_std_groups))]
+            self.std = nn.Parameter(torch.tensor(group_init_std, dtype=torch.float))
+        else:
+            self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
         # disable args validation for speedup
         Normal.set_default_validate_args = False
@@ -163,12 +191,23 @@ class HIMActorCritic(nn.Module):
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
 
+    def _expanded_std(self, reference_tensor):
+        if self.std_group_indices is None:
+            return self.std
+
+        expanded_std = torch.empty(self.num_actions, device=reference_tensor.device, dtype=self.std.dtype)
+        group_std = self.std.to(reference_tensor.device)
+        for group_id, group_indices in enumerate(self.std_group_indices):
+            expanded_std[group_indices] = group_std[group_id]
+        return expanded_std
+
     def update_distribution(self, obs_history):
         with torch.no_grad():
             vel, latent = self.estimator(obs_history)
         actor_input = torch.cat((obs_history[:,:self.num_one_step_obs], vel, latent), dim=-1)
         mean = self.actor(actor_input)
-        self.distribution = Normal(mean, mean*0. + self.std)
+        std = self._expanded_std(mean)
+        self.distribution = Normal(mean, mean*0. + std)
 
     def act(self, obs_history=None, **kwargs):
         self.update_distribution(obs_history)

@@ -187,7 +187,13 @@ class HIMOnPolicyRunner:
                 value = torch.mean(infotensor)
                 self.writer.add_scalar('Episode/' + key, value, locs['it'])
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
-        mean_std = self.alg.actor_critic.std.mean()
+        expanded_std = self.alg.actor_critic._expanded_std(self.alg.actor_critic.std)
+        mean_std = expanded_std.mean()
+        leg_std = None
+        wheel_std = None
+        if getattr(self.alg.actor_critic, "std_group_indices", None) is not None and len(self.alg.actor_critic.std_group_indices) >= 2:
+            leg_std = expanded_std[self.alg.actor_critic.std_group_indices[0]].mean()
+            wheel_std = expanded_std[self.alg.actor_critic.std_group_indices[1]].mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
 
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
@@ -197,6 +203,10 @@ class HIMOnPolicyRunner:
         self.writer.add_scalar('Loss/System Loss', locs['mean_sys_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
+        if leg_std is not None:
+            self.writer.add_scalar('Policy/leg_noise_std', leg_std.item(), locs['it'])
+        if wheel_std is not None:
+            self.writer.add_scalar('Policy/wheel_noise_std', wheel_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
         self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])
         self.writer.add_scalar('Perf/learning_time', locs['learn_time'], locs['it'])

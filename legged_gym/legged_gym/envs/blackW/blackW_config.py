@@ -4,7 +4,7 @@ from legged_gym.envs.black.black_config import BlackCfg, BlackCfgPPO
 class BlackWCfg(BlackCfg):
     class init_state(BlackCfg.init_state):
         # 1. 初始姿态
-        pos = [0.0, 0.0, 0.45]
+        pos = [0.0, 0.0, 0.58]
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527, 'FL_wheel_joint': 0.0,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,  'FR_wheel_joint': 0.0,
@@ -50,7 +50,7 @@ class BlackWCfg(BlackCfg):
         # - "learned": policy directly outputs wheel angular velocity reference
         # - "residual": wheel angular velocity reference = command-based target + policy residual
         wheel_control_mode = "learned"
-        vel_scale = 10.0
+        vel_scale = 5.0
         wheel_residual_scale = 3.0
         # Wheel radius [m]. Used in _target_wheel_velocities() to convert linear velocity
         # command to wheel angular velocity.
@@ -262,12 +262,12 @@ class BlackWCfg(BlackCfg):
             orientation = -5.0
             dof_acc = -0.0
             joint_power = -0.0
-            base_height = -2.0
+            base_height = -5.0
             foot_clearance = -0.0
             action_rate = -0.01
             smoothness = -0.01
-            wheel_action_rate = -0.0025
-            wheel_smoothness = -0.0025
+            wheel_action_rate = -0.001
+            wheel_smoothness = -0.0001
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
@@ -278,8 +278,8 @@ class BlackWCfg(BlackCfg):
             dof_vel_limits = -0.0
             torque_limits = -1e-5
             trot = 0.0
-            hip_pos = -0.3
-            all_joint_pos = -0.0005
+            hip_pos = -0.8
+            all_joint_pos = -0.001
             foot_slip = -0.0
             foot_impact_vel = -0.0
             progress = 1.0
@@ -307,7 +307,16 @@ class BlackWCfg(BlackCfg):
 
 class BlackWCfgPPO(BlackCfgPPO):
     class policy(BlackCfgPPO.policy):
-        init_noise_std = 1.0
+        # Grouped exploration std for wheel-legged control.
+        # Group 0: leg joints (hip/thigh/calf), Group 1: wheel joints.
+        init_noise_std = 1.0  # fallback when grouped std is disabled
+        leg_init_noise_std = 1.0
+        wheel_init_noise_std = 0.5
+        action_std_groups = [
+            [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14],
+            [3, 7, 11, 15],
+        ]
+        action_std_group_init_noise_std = [leg_init_noise_std, wheel_init_noise_std]
         actor_hidden_dims = [512, 256, 128]
         critic_hidden_dims = [512, 256, 128]
         activation = 'elu'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
