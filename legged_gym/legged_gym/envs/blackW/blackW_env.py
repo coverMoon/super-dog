@@ -240,8 +240,9 @@ class BlackWEnv(BlackEnv):
             torch.abs(self.dof_pos[:, self.leg_dof_indices] - self.default_dof_pos[:, self.leg_dof_indices]),
             dim=1,
         )
-        vel_error = torch.sum(torch.abs(self.dof_vel[:, self.leg_dof_indices]), dim=1)
-        return (pos_error + 0.05 * vel_error) * is_still
+        leg_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.leg_dof_indices]), dim=1)
+        wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
+        return (pos_error + 0.05 * leg_vel_error + 0.02 * wheel_vel_error) * is_still
 
     def _reward_dof_pos_limits(self):
         dof_pos = self.dof_pos[:, self.leg_dof_indices]
@@ -253,11 +254,33 @@ class BlackWEnv(BlackEnv):
     def _reward_dof_vel(self):
         return torch.sum(torch.square(self.dof_vel[:, self.leg_dof_indices]), dim=1)
 
+    def _reward_dof_acc(self):
+        dof_acc = (self.last_dof_vel - self.dof_vel) / self.dt
+        return torch.sum(torch.square(dof_acc[:, self.leg_dof_indices]), dim=1)
+
+    def _reward_joint_power(self):
+        leg_vel = torch.abs(self.dof_vel[:, self.leg_dof_indices])
+        leg_torque = torch.abs(self.torques[:, self.leg_dof_indices])
+        return torch.sum(leg_vel * leg_torque, dim=1)
+
+    def _reward_torques(self):
+        return torch.sum(torch.square(self.torques[:, self.leg_dof_indices]), dim=1)
+
+    def _reward_dof_vel_limits(self):
+        leg_vel = torch.abs(self.dof_vel[:, self.leg_dof_indices])
+        leg_limits = self.dof_vel_limits[self.leg_dof_indices]
+        penalty = leg_vel - leg_limits * self.cfg.rewards.soft_dof_vel_limit
+        return torch.sum(penalty.clip(min=0.0, max=1.0), dim=1)
+
+    def _reward_torque_limits(self):
+        leg_torque = torch.abs(self.torques[:, self.leg_dof_indices])
+        leg_limits = self.torque_limits[self.leg_dof_indices]
+        penalty = leg_torque - leg_limits * self.cfg.rewards.soft_torque_limit
+        return torch.sum(penalty.clip(min=0.0), dim=1)
+
     def _reward_action_rate(self):
-        diff = self.last_actions - self.actions
-        weights = torch.ones(self.num_actions, device=self.device, requires_grad=False)
-        weights[self.wheel_indices] = 0.25
-        penalty = torch.sum(torch.square(diff) * weights.unsqueeze(0), dim=1)
+        diff = self.last_actions[:, self.leg_dof_indices] - self.actions[:, self.leg_dof_indices]
+        penalty = torch.sum(torch.square(diff), dim=1)
         terrain_variability = self._get_terrain_variability()
         scale = self._get_adaptive_decay_scale(
             self.cfg.rewards.terrain_adaptive.action_rate,
@@ -266,13 +289,27 @@ class BlackWEnv(BlackEnv):
         return penalty * scale
 
     def _reward_smoothness(self):
-        second_diff = self.actions - self.last_actions - self.last_actions + self.last_last_actions
-        weights = torch.ones(self.num_actions, device=self.device, requires_grad=False)
-        weights[self.wheel_indices] = 0.25
-        penalty = torch.sum(torch.square(second_diff) * weights.unsqueeze(0), dim=1)
+        second_diff = (
+            self.actions[:, self.leg_dof_indices]
+            - 2.0 * self.last_actions[:, self.leg_dof_indices]
+            + self.last_last_actions[:, self.leg_dof_indices]
+        )
+        penalty = torch.sum(torch.square(second_diff), dim=1)
         terrain_variability = self._get_terrain_variability()
         scale = self._get_adaptive_decay_scale(
             self.cfg.rewards.terrain_adaptive.smoothness,
             terrain_variability,
         )
         return penalty * scale
+
+    def _reward_wheel_action_rate(self):
+        diff = self.last_actions[:, self.wheel_indices] - self.actions[:, self.wheel_indices]
+        return torch.sum(torch.square(diff), dim=1)
+
+    def _reward_wheel_smoothness(self):
+        second_diff = (
+            self.actions[:, self.wheel_indices]
+            - 2.0 * self.last_actions[:, self.wheel_indices]
+            + self.last_last_actions[:, self.wheel_indices]
+        )
+        return torch.sum(torch.square(second_diff), dim=1)

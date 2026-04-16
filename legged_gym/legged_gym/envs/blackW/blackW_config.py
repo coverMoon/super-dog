@@ -28,10 +28,9 @@ class BlackWCfg(BlackCfg):
             'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
             'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
             'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
-            'FL_wheel_joint': 2.0, 'RL_wheel_joint': 2.0, 'FR_wheel_joint': 2.0, 'RR_wheel_joint': 2.0,
+            'FL_wheel_joint': 0.5, 'RL_wheel_joint': 0.5, 'FR_wheel_joint': 0.5, 'RR_wheel_joint': 0.5,
         }
 
-        # # 轮腿更硬的一组备选参数
         # stiffness = {
         #     'FL_hip_joint': 60.0, 'RL_hip_joint': 60.0, 'FR_hip_joint': 60.0, 'RR_hip_joint': 60.0,
         #     'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
@@ -50,8 +49,8 @@ class BlackWCfg(BlackCfg):
         # Wheel control:
         # - "learned": policy directly outputs wheel angular velocity reference
         # - "residual": wheel angular velocity reference = command-based target + policy residual
-        wheel_control_mode = "residual"
-        vel_scale = 12.0
+        wheel_control_mode = "learned"
+        vel_scale = 10.0
         wheel_residual_scale = 3.0
         # Wheel radius [m]. Used in _target_wheel_velocities() to convert linear velocity
         # command to wheel angular velocity.
@@ -157,7 +156,7 @@ class BlackWCfg(BlackCfg):
             height_measurements = 0.1
 
     class terrain(BlackCfg.terrain):
-        mesh_type = 'plane'  # blackW 当前优先在平地验证轮腿控制
+        mesh_type = 'plane'  # options: 'plane', 'heightfield', 'trimesh'
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 25  # [m]
@@ -171,7 +170,7 @@ class BlackWCfg(BlackCfg):
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
         selected = False
         terrain_kwargs = None
-        max_init_terrain_level = 3
+        max_init_terrain_level = 5
         terrain_length = 8.
         terrain_width = 8.
         num_rows = 10
@@ -180,36 +179,18 @@ class BlackWCfg(BlackCfg):
         terrain_proportions = [0.2, 0.1, 0.1, 0.2, 0.25, 0.15, 0.0, 0.0, 0.0, 0.0]
         slope_treshold = 0.75
 
-    class env(BlackCfg.env):
-        num_envs = 4096
-        # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)
-        num_one_step_observations = 3 + 3 + 3 + 16 + 16 + 16
-        num_observations = num_one_step_observations * 6
-
-        # additional: base_lin_vel, external_forces, scan_dots
-        num_one_step_privileged_obs = num_one_step_observations + 3 + 3 + 187
-
-        num_privileged_obs = num_one_step_privileged_obs * 1
-        num_actions = 16
-        env_spacing = 3.  # not used with heightfields/trimeshes
-        send_timeouts = True
-        episode_length_s = 20
-        stuck_timeout_s = 4.0
-        stuck_vel_threshold = 0.05
-        stuck_command_threshold = 0.2
-        stuck_grace_s = 1.0
-
     class rewards(BlackCfg.rewards):
         cycle_time = 0.8
         clearance_height_target = 0.08
+        
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
-        base_height_target = 0.43
+        base_height_target = 0.53
         only_positive_rewards = False
 
         class terrain_adaptive(BlackCfg.rewards.terrain_adaptive):
-            enabled = True
+            enabled = False
             terrain_variability_clip = 0.30
 
             class orientation(BlackCfg.rewards.terrain_adaptive.orientation):
@@ -275,20 +256,22 @@ class BlackWCfg(BlackCfg):
         class scales(BlackCfg.rewards.scales):
             termination = -500.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.2
+            tracking_ang_vel = 1.0
             lin_vel_z = -1.0
-            ang_vel_xy = -0.05
-            orientation = -2.0
+            ang_vel_xy = -0.05 
+            orientation = -5.0
             dof_acc = -0.0
             joint_power = -0.0
             base_height = -2.0
             foot_clearance = -0.0
-            action_rate = -0.15
-            smoothness = -0.005
+            action_rate = -0.01
+            smoothness = -0.01
+            wheel_action_rate = -0.0025
+            wheel_smoothness = -0.0025
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
-            stand_still = -0.5
+            stand_still = -1.0
             torques = -1e-7
             dof_vel = -1e-7
             dof_pos_limits = -10.0
@@ -301,6 +284,25 @@ class BlackWCfg(BlackCfg):
             foot_impact_vel = -0.0
             progress = 1.0
             raibert = 0.0
+
+    class env(BlackCfg.env):
+        num_envs = 4096
+        # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)
+        num_one_step_observations = 3 + 3 + 3 + 16 + 16 + 16
+        num_observations = num_one_step_observations * 6
+
+        # additional: base_lin_vel, external_forces, scan_dots
+        num_one_step_privileged_obs = num_one_step_observations + 3 + 3 + 187
+
+        num_privileged_obs = num_one_step_privileged_obs * 1
+        num_actions = 16
+        env_spacing = 3.  # not used with heightfields/trimeshes
+        send_timeouts = True
+        episode_length_s = 20
+        stuck_timeout_s = 4.0
+        stuck_vel_threshold = 0.05
+        stuck_command_threshold = 0.2
+        stuck_grace_s = 1.0
 
 
 class BlackWCfgPPO(BlackCfgPPO):
@@ -322,21 +324,46 @@ class BlackWCfgPPO(BlackCfgPPO):
         entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 1.e-4  # 5.e-4
+        learning_rate = 5.e-4  # 5.e-4
         schedule = 'adaptive'  # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
         desired_kl = 0.01
         max_grad_norm = 1.
-        # 轮腿任务当前未配置镜像置换表，先关闭对称损失
-        sym_loss = False
-        obs_permutation = []
-        act_permutation = []
+        # 单帧观测布局:
+        # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)
+        # 左右镜像下: vx 保持, vy/yaw 取反; wx/wz 取反, wy 保持; gravity 的 y 分量取反。
+        # 关节/轮子按 FL<->FR, RL<->RR 交换。
+        # 轮子项使用负号, 因为当前资产左右轮关节轴方向相反, 与 wheel_forward_sign 的定义一致。
+        sym_loss = True
+        obs_permutation = [
+            0.00001, -1, -2,
+            -3, 4, -5,
+            6, -7, 8,
+            -13, -14, -15, -16,
+            -9, -10, -11, -12,
+            -21, -22, -23, -24,
+            -17, -18, -19, -20,
+            -29, -30, -31, -32,
+            -25, -26, -27, -28,
+            -37, -38, -39, -40,
+            -33, -34, -35, -36,
+            -45, -46, -47, -48,
+            -41, -42, -43, -44,
+            -53, -54, -55, -56,
+            -49, -50, -51, -52,
+        ]
+        act_permutation = [
+            -4, -5, -6, -7,
+            -0.0001, -1, -2, -3,
+            -12, -13, -14, -15,
+            -8, -9, -10, -11,
+        ]
         frame_stack = 6
         sym_coef = 0.8
 
     class runner(BlackCfgPPO.runner):
         run_name = ''
-        num_steps_per_env = 24
+        num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 1000
+        max_iterations = 500
