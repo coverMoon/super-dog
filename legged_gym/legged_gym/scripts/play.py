@@ -38,7 +38,6 @@ from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Log
 import numpy as np
 import torch
 
-
 def play(args, x_vel=0.0, y_vel=0.5, yaw_vel=0.0):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
@@ -91,7 +90,6 @@ def play(args, x_vel=0.0, y_vel=0.5, yaw_vel=0.0):
         env.commands[:, 1] = y_vel
         env.commands[:, 2] = yaw_vel
         obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
-
 
         if RECORD_FRAMES:
             if i % 2:

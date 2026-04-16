@@ -25,6 +25,7 @@
 - `legged_gym/legged_gym/envs/black/`：`black` 与 `black_bridge` 环境及配置。
 - `legged_gym/legged_gym/envs/black_arm/`：机械臂轨迹库、联合任务环境与配置。
 - `legged_gym/resources/robots/black/`：`black` 机器人资产。
+- `black_joint_order.md`：`black` / `blackW` 在 Isaac Gym 运行时的关节顺序与部署映射说明。
 - `legged_gym/resources/robots/black_with_arm/`：`black + arm` 组合资产。
 - `robust_arm/`：机械臂原始模型、任务规划草案和实验数据。
 - `terrain_weights_calc.py`：辅助分析地形自适应奖励权重的小工具。
