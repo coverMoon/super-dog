@@ -269,10 +269,16 @@ class HIMOnPolicyRunner:
 
     def load(self, path, load_optimizer=True):
         loaded_dict = torch.load(path)
-        self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
+        model_state_dict, remapped_std = self.alg.actor_critic._remap_legacy_std_state(
+            loaded_dict['model_state_dict']
+        )
+        self.alg.actor_critic.load_state_dict(model_state_dict)
         if load_optimizer:
-            self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
-            self.alg.actor_critic.estimator.optimizer.load_state_dict(loaded_dict['estimator_optimizer_state_dict'])
+            if remapped_std:
+                print("Skipping optimizer state load because action std was remapped for checkpoint compatibility.")
+            else:
+                self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+                self.alg.actor_critic.estimator.optimizer.load_state_dict(loaded_dict['estimator_optimizer_state_dict'])
         self.current_learning_iteration = loaded_dict['iter']
         return loaded_dict['infos']
 

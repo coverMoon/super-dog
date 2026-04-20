@@ -4,7 +4,7 @@ from legged_gym.envs.black.black_config import BlackCfg, BlackCfgPPO
 class BlackWCfg(BlackCfg):
     class init_state(BlackCfg.init_state):
         # 1. 初始姿态
-        pos = [0.0, 0.0, 0.58]
+        pos = [0.0, 0.0, 0.55]
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527, 'FL_wheel_joint': 0.0,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,  'FR_wheel_joint': 0.0,
@@ -50,14 +50,14 @@ class BlackWCfg(BlackCfg):
         # - "learned": policy directly outputs wheel angular velocity reference
         # - "residual": wheel angular velocity reference = command-based target + policy residual
         wheel_control_mode = "learned"
-        vel_scale = 5.0
+        vel_scale = 10.0
         wheel_residual_scale = 3.0
         # Wheel radius [m]. Used in _target_wheel_velocities() to convert linear velocity
         # command to wheel angular velocity.
         wheel_radius = 0.103
         # Half of left-right wheel track [m]. Used in _target_wheel_velocities()
         # for yaw differential speed.
-        wheel_base_half_width = 0.16
+        wheel_base_half_width = 0.183
         # Sign used to map positive command x to positive rolling direction.
         # Use leg-name keys so deployment/training stay correct even if Isaac Gym
         # reorders the runtime DOF sequence.
@@ -180,14 +180,20 @@ class BlackWCfg(BlackCfg):
         slope_treshold = 0.75
 
     class rewards(BlackCfg.rewards):
-        cycle_time = 0.8
-        clearance_height_target = 0.08
+        cycle_time = 0.8    # not for blackW
+        clearance_height_target = 0.08  # not for blackW
         
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
-        base_height_target = 0.53
+        base_height_target = 0.50
         only_positive_rewards = False
+
+        class wheel_guidance:
+            sigma = 1.0
+            min_gate = 0.5
+            vx_gate_ref = 0.2
+            yaw_gate_ref = 0.3
 
         class terrain_adaptive(BlackCfg.rewards.terrain_adaptive):
             enabled = False
@@ -256,7 +262,7 @@ class BlackWCfg(BlackCfg):
         class scales(BlackCfg.rewards.scales):
             termination = -500.0
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.0
+            tracking_ang_vel = 1.5
             lin_vel_z = -1.0
             ang_vel_xy = -0.05 
             orientation = -5.0
@@ -266,8 +272,9 @@ class BlackWCfg(BlackCfg):
             foot_clearance = -0.0
             action_rate = -0.01
             smoothness = -0.01
-            wheel_action_rate = -0.001
-            wheel_smoothness = -0.0001
+            wheel_action_rate = -0.01
+            wheel_smoothness = -0.01
+            wheel_vel_ref_tracking = 1.0
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
@@ -369,7 +376,7 @@ class BlackWCfgPPO(BlackCfgPPO):
             -8, -9, -10, -11,
         ]
         frame_stack = 6
-        sym_coef = 0.8
+        sym_coef = 1.0
 
     class runner(BlackCfgPPO.runner):
         run_name = ''

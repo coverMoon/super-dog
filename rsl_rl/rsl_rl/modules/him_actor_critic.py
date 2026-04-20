@@ -32,6 +32,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from collections import OrderedDict
 from torch.distributions import Normal
 from .actor_critic import ActorCritic, get_activation
 from rsl_rl.modules.him_estimator import HIMEstimator
@@ -200,6 +201,43 @@ class HIMActorCritic(nn.Module):
         for group_id, group_indices in enumerate(self.std_group_indices):
             expanded_std[group_indices] = group_std[group_id]
         return expanded_std
+
+    def _remap_legacy_std_state(self, state_dict):
+        if "std" not in state_dict:
+            return state_dict, False
+
+        loaded_std = state_dict["std"]
+        if loaded_std.shape == self.std.shape:
+            return state_dict, False
+
+        remapped_state = OrderedDict(state_dict)
+        if self.std_group_indices is not None and loaded_std.numel() == self.num_actions:
+            group_std = []
+            for group_indices in self.std_group_indices:
+                group_std.append(loaded_std[group_indices].mean())
+            remapped_state["std"] = torch.stack(group_std).to(
+                device=loaded_std.device,
+                dtype=loaded_std.dtype,
+            )
+            print(
+                f"Remapped legacy action std from shape {tuple(loaded_std.shape)} "
+                f"to grouped shape {tuple(remapped_state['std'].shape)}."
+            )
+            return remapped_state, True
+
+        if loaded_std.numel() == 1:
+            remapped_state["std"] = loaded_std.reshape(1).expand_as(self.std).clone()
+            print(
+                f"Broadcast action std from shape {tuple(loaded_std.shape)} "
+                f"to shape {tuple(remapped_state['std'].shape)}."
+            )
+            return remapped_state, True
+
+        return state_dict, False
+
+    def load_state_dict(self, state_dict, strict=True):
+        remapped_state, _ = self._remap_legacy_std_state(state_dict)
+        return super().load_state_dict(remapped_state, strict=strict)
 
     def update_distribution(self, obs_history):
         with torch.no_grad():

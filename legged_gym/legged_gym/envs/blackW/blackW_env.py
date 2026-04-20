@@ -90,6 +90,14 @@ class BlackWEnv(BlackEnv):
                 "cfg.control.wheel_forward_sign must contain one sign per runtime wheel DOF order"
             )
         return [float(sign) for sign in cfg_sign]
+    
+    def _target_wheel_velocities(self):
+        lin_x = self.commands[:, 0].unsqueeze(1)
+        yaw = self.commands[:, 2].unsqueeze(1)
+        radius = max(self.cfg.control.wheel_radius, 1e-6)
+        half_width = self.cfg.control.wheel_base_half_width
+        target = (lin_x - yaw * half_width * self.wheel_side_sign.unsqueeze(0)) / radius
+        return target * self.wheel_forward_sign.unsqueeze(0)
 
     def _compute_torques(self, actions):
         actions_scaled = actions * self.cfg.control.action_scale
@@ -224,15 +232,19 @@ class BlackWEnv(BlackEnv):
 
     def _reward_all_joint_pos(self):
         err = self.dof_pos[:, self.leg_dof_indices] - self.default_dof_pos[:, self.leg_dof_indices]
-        return torch.sum(torch.square(err), dim=1)
+        return torch.sum(torch.square(err), dim=1) 
 
-    def _target_wheel_velocities(self):
-        lin_x = self.commands[:, 0].unsqueeze(1)
-        yaw = self.commands[:, 2].unsqueeze(1)
-        radius = max(self.cfg.control.wheel_radius, 1e-6)
-        half_width = self.cfg.control.wheel_base_half_width
-        target = (lin_x - yaw * half_width * self.wheel_side_sign.unsqueeze(0)) / radius
-        return target * self.wheel_forward_sign.unsqueeze(0)
+    def _reward_wheel_vel_ref_tracking(self):
+        cfg = self.cfg.rewards.wheel_guidance
+        wheel_vel = self.dof_vel[:, self.wheel_indices]
+        target = self._target_wheel_velocities()
+        err = wheel_vel - target
+
+        vx_gate = torch.clamp(torch.abs(self.commands[:, 0]) / max(cfg.vx_gate_ref, 1e-6), 0.0, 1.0)
+        yaw_gate = torch.clamp(torch.abs(self.commands[:, 2]) / max(cfg.yaw_gate_ref, 1e-6), 0.0, 1.0)
+        active_gate = torch.maximum(vx_gate, yaw_gate)
+        gate = cfg.min_gate + (1.0 - cfg.min_gate) * active_gate
+        return torch.exp(-torch.mean(torch.square(err), dim=1) / max(cfg.sigma, 1e-6)) * gate
 
     def _reward_stand_still(self):
         is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
