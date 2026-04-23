@@ -283,7 +283,7 @@ class BlackWEnv(BlackEnv):
         target_xy = self._raibert_target_xy()
         xy_error_sq = torch.sum(torch.square(foot_pos_body[:, :, :2] - target_xy), dim=2)
         move_cmd = (
-            (torch.norm(self.commands[:, 1], dim=1) > 0.1)
+            (torch.abs(self.commands[:, 1]) > 0.1)
             | (torch.abs(self.commands[:, 2]) > 0.1)
         ).float()
         return torch.sum(xy_error_sq, dim=1) * move_cmd
