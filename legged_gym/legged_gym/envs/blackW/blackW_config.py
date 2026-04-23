@@ -277,6 +277,7 @@ class BlackWCfg(BlackCfg):
             foot_clearance = -3.0
             feet_air_time = 5.0
             foot_impact_vel = -5.0
+            trot = 1.0
 
             # Active smoothness/limit penalties
             action_rate = -0.01
@@ -293,7 +294,6 @@ class BlackWCfg(BlackCfg):
             joint_power = -0.0
             feet_stumble = -0.0
             dof_vel_limits = -0.0
-            trot = 0.0
             foot_slip = -0.0
             raibert = 0.0
 

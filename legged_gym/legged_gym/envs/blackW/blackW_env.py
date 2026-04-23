@@ -239,7 +239,7 @@ class BlackWEnv(BlackEnv):
             dim=1,
         )
         is_straight_command = (torch.abs(self.commands[:, 1]) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
-        scale = torch.where(is_straight_command, 1.0, 0.1)
+        scale = torch.where(is_straight_command, 1.0, 0.)
         return scale * penalty
 
     def _reward_all_joint_pos(self):
@@ -316,7 +316,7 @@ class BlackWEnv(BlackEnv):
         nominal_xy = self.nominal_foothold_xy.unsqueeze(0)
         xy_error = foot_pos_body[:, :, :2] - nominal_xy
         penalty = torch.sum(torch.abs(xy_error), dim=(1, 2))
-        scale = torch.where(self._gait_cmd_mask(), 0.2, 1.0)
+        scale = torch.where(self._gait_cmd_mask(), 0.1, 1.0)
         return penalty * scale
 
     def _reward_stand_still(self):
