@@ -139,6 +139,38 @@ class BlackWEnv(BlackEnv):
             return self._target_wheel_velocities() + signed_wheel_actions * self.cfg.control.wheel_residual_scale
         raise NameError(f"Unknown wheel control mode: {mode}")
 
+    def _raibert_target_xy(self):
+        cfg = self.cfg.rewards.raibert
+        cmd_limits = self.commands.new_tensor([
+            max(abs(self.command_ranges["lin_vel_x"][0]), abs(self.command_ranges["lin_vel_x"][1]), 1e-6),
+            max(abs(self.command_ranges["lin_vel_y"][0]), abs(self.command_ranges["lin_vel_y"][1]), 1e-6),
+        ]).view(1, 1, 2)
+        cmd_xy_norm = torch.clamp(self.commands[:, :2].unsqueeze(1) / cmd_limits, min=-1.0, max=1.0)
+        vel_error_norm = torch.clamp(
+            (self.commands[:, :2] - self.base_lin_vel[:, :2]).unsqueeze(1) / cmd_limits,
+            min=-1.0,
+            max=1.0,
+        )
+        linear_drive = torch.clamp(cmd_xy_norm + cfg.vel_error_gain * vel_error_norm, min=-1.0, max=1.0)
+
+        max_linear_offset = self.commands.new_tensor(
+            [cfg.max_linear_offset_x, cfg.max_linear_offset_y]
+        ).view(1, 1, 2)
+        target_xy = self.nominal_foothold_xy.unsqueeze(0) + linear_drive * max_linear_offset
+
+        yaw_limit = max(
+            abs(self.command_ranges["ang_vel_yaw"][0]),
+            abs(self.command_ranges["ang_vel_yaw"][1]),
+            1e-6,
+        )
+        yaw_norm = torch.clamp(self.commands[:, 2].view(self.num_envs, 1, 1) / yaw_limit, min=-1.0, max=1.0)
+        yaw_basis = torch.stack(
+            (-self.nominal_foothold_xy[:, 1], self.nominal_foothold_xy[:, 0]),
+            dim=1,
+        )
+        yaw_basis = yaw_basis / torch.clamp(torch.norm(yaw_basis, dim=1, keepdim=True), min=1e-6)
+        return target_xy + cfg.max_yaw_offset * cfg.yaw_gain * yaw_norm * yaw_basis.unsqueeze(0)
+
     def _dof_pos_error_obs(self):
         dof_pos_error = self.dof_pos - self.default_dof_pos
         dof_pos_error = dof_pos_error.clone()
@@ -227,7 +259,7 @@ class BlackWEnv(BlackEnv):
             dim=1,
         )
         is_straight_command = (torch.abs(self.commands[:, 1]) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
-        scale = torch.where(is_straight_command, 1.0, 0.2)
+        scale = torch.where(is_straight_command, 1.0, 1.0)
         return scale * penalty
 
     def _reward_all_joint_pos(self):
@@ -245,6 +277,16 @@ class BlackWEnv(BlackEnv):
         active_gate = torch.maximum(vx_gate, yaw_gate)
         gate = cfg.min_gate + (1.0 - cfg.min_gate) * active_gate
         return torch.exp(-torch.mean(torch.square(err), dim=1) / max(cfg.sigma, 1e-6)) * gate
+
+    def _reward_raibert_foothold(self):
+        foot_pos_body, _ = self._get_feet_state_in_body_frame()
+        target_xy = self._raibert_target_xy()
+        xy_error_sq = torch.sum(torch.square(foot_pos_body[:, :, :2] - target_xy), dim=2)
+        move_cmd = (
+            (torch.norm(self.commands[:, 1], dim=1) > 0.1)
+            | (torch.abs(self.commands[:, 2]) > 0.1)
+        ).float()
+        return torch.sum(xy_error_sq, dim=1) * move_cmd
 
     def _reward_stand_still(self):
         is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)

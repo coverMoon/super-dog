@@ -18,17 +18,17 @@ class BlackWCfg(BlackCfg):
 
         # 刚度 (P Gain)
         stiffness = {
-            'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
-            'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
-            'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
+            'FL_hip_joint': 45.0, 'RL_hip_joint': 45.0, 'FR_hip_joint': 45.0, 'RR_hip_joint': 45.0,
+            'FL_thigh_joint': 45.0, 'RL_thigh_joint': 45.0, 'FR_thigh_joint': 45.0, 'RR_thigh_joint': 45.0,
+            'FL_calf_joint': 45.0, 'RL_calf_joint': 45.0, 'FR_calf_joint': 45.0, 'RR_calf_joint': 45.0,
             'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
         }
         # 阻尼 (D Gain)
         damping = {
             'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
-            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
+            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
             'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
-            'FL_wheel_joint': 0.5, 'RL_wheel_joint': 0.5, 'FR_wheel_joint': 0.5, 'RR_wheel_joint': 0.5,
+            'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
         }
 
         # stiffness = {
@@ -50,7 +50,7 @@ class BlackWCfg(BlackCfg):
         # - "learned": policy directly outputs wheel angular velocity reference
         # - "residual": wheel angular velocity reference = command-based target + policy residual
         wheel_control_mode = "learned"
-        vel_scale = 10.0
+        vel_scale = 20.0
         wheel_residual_scale = 3.0
         # Wheel radius [m]. Used in _target_wheel_velocities() to convert linear velocity
         # command to wheel angular velocity.
@@ -190,7 +190,7 @@ class BlackWCfg(BlackCfg):
         only_positive_rewards = False
 
         class wheel_guidance:
-            sigma = 1.0
+            sigma = 8.0
             min_gate = 0.5
             vx_gate_ref = 0.2
             yaw_gate_ref = 0.3
@@ -274,7 +274,7 @@ class BlackWCfg(BlackCfg):
             smoothness = -0.01
             wheel_action_rate = -0.01
             wheel_smoothness = -0.01
-            wheel_vel_ref_tracking = 1.0
+            wheel_vel_ref_tracking = 3.0
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
@@ -285,12 +285,13 @@ class BlackWCfg(BlackCfg):
             dof_vel_limits = -0.0
             torque_limits = -1e-5
             trot = 0.0
-            hip_pos = -0.8
-            all_joint_pos = -0.001
+            hip_pos = -2.0
+            all_joint_pos = -0.1
             foot_slip = -0.0
             foot_impact_vel = -0.0
             progress = 1.0
             raibert = 0.0
+            raibert_foothold = -1.0
 
     class env(BlackCfg.env):
         num_envs = 4096
@@ -382,4 +383,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 500
+        max_iterations = 1000
