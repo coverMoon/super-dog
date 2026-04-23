@@ -30,4 +30,4 @@ dist/
 run_train_docker.sh
 robust_arm
 .codex
-
+legged_gym/resources/
