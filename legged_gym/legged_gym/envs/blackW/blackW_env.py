@@ -93,10 +93,8 @@ class BlackWEnv(BlackEnv):
     
     def _target_wheel_velocities(self):
         lin_x = self.commands[:, 0].unsqueeze(1)
-        yaw = self.commands[:, 2].unsqueeze(1)
         radius = max(self.cfg.control.wheel_radius, 1e-6)
-        half_width = self.cfg.control.wheel_base_half_width
-        target = (lin_x - yaw * half_width * self.wheel_side_sign.unsqueeze(0)) / radius
+        target = lin_x / radius
         return target * self.wheel_forward_sign.unsqueeze(0)
 
     def _compute_torques(self, actions):
@@ -139,37 +137,16 @@ class BlackWEnv(BlackEnv):
             return self._target_wheel_velocities() + signed_wheel_actions * self.cfg.control.wheel_residual_scale
         raise NameError(f"Unknown wheel control mode: {mode}")
 
-    def _raibert_target_xy(self):
-        cfg = self.cfg.rewards.raibert
-        cmd_limits = self.commands.new_tensor([
-            max(abs(self.command_ranges["lin_vel_x"][0]), abs(self.command_ranges["lin_vel_x"][1]), 1e-6),
-            max(abs(self.command_ranges["lin_vel_y"][0]), abs(self.command_ranges["lin_vel_y"][1]), 1e-6),
-        ]).view(1, 1, 2)
-        cmd_xy_norm = torch.clamp(self.commands[:, :2].unsqueeze(1) / cmd_limits, min=-1.0, max=1.0)
-        vel_error_norm = torch.clamp(
-            (self.commands[:, :2] - self.base_lin_vel[:, :2]).unsqueeze(1) / cmd_limits,
-            min=-1.0,
-            max=1.0,
+    def _gait_cmd_mask(self):
+        return (
+            (torch.abs(self.commands[:, 1]) > 0.1)
+            | (torch.abs(self.commands[:, 2]) > 0.1)
         )
-        linear_drive = torch.clamp(cmd_xy_norm + cfg.vel_error_gain * vel_error_norm, min=-1.0, max=1.0)
 
-        max_linear_offset = self.commands.new_tensor(
-            [cfg.max_linear_offset_x, cfg.max_linear_offset_y]
-        ).view(1, 1, 2)
-        target_xy = self.nominal_foothold_xy.unsqueeze(0) + linear_drive * max_linear_offset
-
-        yaw_limit = max(
-            abs(self.command_ranges["ang_vel_yaw"][0]),
-            abs(self.command_ranges["ang_vel_yaw"][1]),
-            1e-6,
-        )
-        yaw_norm = torch.clamp(self.commands[:, 2].view(self.num_envs, 1, 1) / yaw_limit, min=-1.0, max=1.0)
-        yaw_basis = torch.stack(
-            (-self.nominal_foothold_xy[:, 1], self.nominal_foothold_xy[:, 0]),
-            dim=1,
-        )
-        yaw_basis = yaw_basis / torch.clamp(torch.norm(yaw_basis, dim=1, keepdim=True), min=1e-6)
-        return target_xy + cfg.max_yaw_offset * cfg.yaw_gain * yaw_norm * yaw_basis.unsqueeze(0)
+    def _get_wheel_bottom_heights(self):
+        # blackW's "foot" links are wheel bodies, so feet_pos is the wheel-center
+        # height. Subtract the wheel radius to approximate the bottom/contact height.
+        return self._get_feet_heights() - self.cfg.control.wheel_radius
 
     def _dof_pos_error_obs(self):
         dof_pos_error = self.dof_pos - self.default_dof_pos
@@ -252,14 +229,17 @@ class BlackWEnv(BlackEnv):
             current_obs[:, :self.num_one_step_privileged_obs],
             self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs],
         ), dim=-1)[env_ids]
-
+    
+# ==========================================================================
+# Reward function components
+# ========================================================================== 
     def _reward_hip_pos(self):
         penalty = torch.sum(
             torch.abs(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]),
             dim=1,
         )
         is_straight_command = (torch.abs(self.commands[:, 1]) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
-        scale = torch.where(is_straight_command, 1.0, 1.0)
+        scale = torch.where(is_straight_command, 1.0, 0.1)
         return scale * penalty
 
     def _reward_all_joint_pos(self):
@@ -271,21 +251,73 @@ class BlackWEnv(BlackEnv):
         wheel_vel = self.dof_vel[:, self.wheel_indices]
         target = self._target_wheel_velocities()
         err = wheel_vel - target
-        move_cmd = (
-            (torch.abs(self.commands[:, 0]) > 0.1)
-            | (torch.abs(self.commands[:, 2]) > 0.1)
-        ).float()
+        move_cmd = (torch.abs(self.commands[:, 0]) > 0.1).float()
         return torch.exp(-torch.mean(torch.square(err), dim=1) / max(sigma, 1e-6)) * move_cmd
 
-    def _reward_raibert_foothold(self):
+    def _reward_tracking_lin_vel(self):
+        lin_vel_x_error = torch.square(self.commands[:, 0] - self.base_lin_vel[:, 0])
+        return torch.exp(-lin_vel_x_error / self.cfg.rewards.tracking_sigma)
+
+    def _reward_tracking_lin_vel_y(self):
+        lin_vel_y_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
+        return torch.exp(-lin_vel_y_error / self.cfg.rewards.tracking_sigma)
+
+    def _reward_foot_clearance(self):
+        feet_height = self._get_wheel_bottom_heights()
+
+        phase = self._get_phase().unsqueeze(1)
+        feet_phases = (phase + self.foot_phase_offsets.unsqueeze(0)) % 1.0
+        sin_val = torch.sin(2 * torch.pi * feet_phases)
+
+        terrain_variability = self._get_terrain_variability()
+        extra_clearance = self._get_clearance_margin(terrain_variability)
+        clearance_cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
+
+        stance_tolerance = 0.02 + clearance_cfg.stance_gain * extra_clearance
+        stance_penalty = torch.relu(feet_height - stance_tolerance)
+
+        swing_target = -sin_val * self.cfg.rewards.clearance_height_target
+        swing_low_penalty = torch.relu(swing_target - feet_height)
+        swing_high_penalty = torch.relu(feet_height - (swing_target + extra_clearance))
+        swing_penalty = swing_low_penalty + clearance_cfg.swing_high_penalty_weight * swing_high_penalty
+
+        error = torch.where(sin_val > 0, stance_penalty, swing_penalty)
+        return torch.sum(error, dim=1) * self._gait_cmd_mask().float()
+
+    def _reward_feet_air_time(self):
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        contact_filt = torch.logical_or(contact, self.last_contacts)
+        self.last_contacts = contact
+
+        self.feet_air_time += self.dt
+
+        target_air_time = self.cfg.rewards.cycle_time * 0.5
+        min_air_time = target_air_time * 0.5
+        first_contact = (self.feet_air_time > min_air_time) * contact_filt
+
+        air_time_error = self.feet_air_time - target_air_time
+        rew_air_time = torch.exp(-torch.square(air_time_error) / 0.01) * first_contact
+        rew_air_time = torch.sum(rew_air_time, dim=1) * self._gait_cmd_mask().float()
+
+        self.feet_air_time *= ~contact_filt
+        return rew_air_time
+
+    def _reward_foot_impact_vel(self):
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        first_contact = contact & (~self.last_impact_contacts)
+        self.last_impact_contacts = contact
+
+        impact_vel = torch.clamp(-self.feet_vel[:, :, 2] - 0.2, min=0.0)
+        penalty = torch.sum(torch.square(impact_vel) * first_contact.float(), dim=1)
+        return penalty * self._gait_cmd_mask().float()
+
+    def _reward_foothold(self):
         foot_pos_body, _ = self._get_feet_state_in_body_frame()
-        target_xy = self._raibert_target_xy()
-        xy_error_sq = torch.sum(torch.square(foot_pos_body[:, :, :2] - target_xy), dim=2)
-        move_cmd = (
-            (torch.abs(self.commands[:, 1]) > 0.1)
-            | (torch.abs(self.commands[:, 2]) > 0.1)
-        ).float()
-        return torch.sum(xy_error_sq, dim=1) * move_cmd
+        nominal_xy = self.nominal_foothold_xy.unsqueeze(0)
+        xy_error = foot_pos_body[:, :, :2] - nominal_xy
+        penalty = torch.sum(torch.abs(xy_error), dim=(1, 2))
+        scale = torch.where(self._gait_cmd_mask(), 0.2, 1.0)
+        return penalty * scale
 
     def _reward_stand_still(self):
         is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
@@ -298,7 +330,7 @@ class BlackWEnv(BlackEnv):
         return (pos_error + 0.05 * leg_vel_error) * is_still
 
     def _reward_stand_still_wheels(self):
-        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+        is_still = torch.abs(self.commands[:, 0]) < 0.1
         wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
         return wheel_vel_error * is_still
 

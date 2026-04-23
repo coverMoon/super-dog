@@ -183,6 +183,7 @@ class BlackWCfg(BlackCfg):
         cycle_time = 0.8    # not for blackW
         clearance_height_target = 0.08  # not for blackW
         
+        tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -257,8 +258,9 @@ class BlackWCfg(BlackCfg):
             # Active task rewards
             progress = 1.0
             tracking_lin_vel = 2.0
+            tracking_lin_vel_y = 2.0
             tracking_ang_vel = 1.5
-            wheel_vel_ref_tracking = 3.0
+            wheel_vel_ref_tracking = 0.5
 
             # Active posture/contact penalties
             termination = -500.0
@@ -271,7 +273,10 @@ class BlackWCfg(BlackCfg):
             stand_still_wheels = -1.0
             hip_pos = -2.0
             all_joint_pos = -0.1
-            raibert_foothold = -2.0
+            foothold = -1.0
+            foot_clearance = -3.0
+            feet_air_time = 5.0
+            foot_impact_vel = -5.0
 
             # Active smoothness/limit penalties
             action_rate = -0.01
@@ -286,13 +291,10 @@ class BlackWCfg(BlackCfg):
             # Disabled rewards/penalties
             dof_acc = -0.0
             joint_power = -0.0
-            foot_clearance = -0.0
-            feet_air_time = 0.0
             feet_stumble = -0.0
             dof_vel_limits = -0.0
             trot = 0.0
             foot_slip = -0.0
-            foot_impact_vel = -0.0
             raibert = 0.0
 
     class env(BlackCfg.env):
@@ -340,14 +342,16 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.01
+        entropy_coef = 0.001
         num_learning_epochs = 5
         num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
-        learning_rate = 5.e-4  # 5.e-4
+        learning_rate = 2.e-4  # 5.e-4
         schedule = 'adaptive'  # could be adaptive, fixed
         gamma = 0.99
         lam = 0.95
         desired_kl = 0.01
+        learning_rate_min = 1e-5
+        learning_rate_max = 1e-3
         max_grad_norm = 1.
         # 单帧观测布局:
         # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)

@@ -261,6 +261,8 @@ class LeggedRobotCfgPPO(BaseConfig):
         gamma = 0.99
         lam = 0.95
         desired_kl = 0.01
+        learning_rate_min = 1e-5
+        learning_rate_max = 1e-2
         max_grad_norm = 1.
 
     class runner:

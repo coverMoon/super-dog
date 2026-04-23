@@ -51,6 +51,8 @@ class PPO:
                  use_clipped_value_loss=True,
                  schedule="fixed",
                  desired_kl=0.01,
+                 learning_rate_min=1e-5,
+                 learning_rate_max=1e-2,
                  device='cpu',
                  ):
 
@@ -59,6 +61,8 @@ class PPO:
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
+        self.learning_rate_min = learning_rate_min
+        self.learning_rate_max = learning_rate_max
 
         # PPO components
         self.actor_critic = actor_critic
@@ -143,9 +147,9 @@ class PPO:
                         kl_mean = torch.mean(kl)
 
                         if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                            self.learning_rate = max(self.learning_rate_min, self.learning_rate / 1.5)
                         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                            self.learning_rate = min(self.learning_rate_max, self.learning_rate * 1.5)
                         
                         for param_group in self.optimizer.param_groups:
                             param_group['lr'] = self.learning_rate
