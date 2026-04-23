@@ -84,14 +84,14 @@ class BlackWCfg(BlackCfg):
 
     class commands(BlackCfg.commands):
         curriculum = True
-        max_curriculum = 3.0
+        max_curriculum = 2.0
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
         curriculum_buffer_min = 256
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10.  # time before command are changed[s]
-        heading_command = True  # if true: compute ang vel command from heading error
+        heading_command = False  # if true: compute ang vel command from heading error
 
         class ranges(BlackCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
@@ -189,12 +189,6 @@ class BlackWCfg(BlackCfg):
         base_height_target = 0.50
         only_positive_rewards = False
 
-        class wheel_guidance:
-            sigma = 8.0
-            min_gate = 0.5
-            vx_gate_ref = 0.2
-            yaw_gate_ref = 0.3
-
         class terrain_adaptive(BlackCfg.rewards.terrain_adaptive):
             enabled = False
             terrain_variability_clip = 0.30
@@ -260,38 +254,46 @@ class BlackWCfg(BlackCfg):
             max_approach_speed = 0.4
 
         class scales(BlackCfg.rewards.scales):
-            termination = -500.0
+            # Active task rewards
+            progress = 1.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
-            lin_vel_z = -1.0
-            ang_vel_xy = -0.05 
+            wheel_vel_ref_tracking = 3.0
+
+            # Active posture/contact penalties
+            termination = -500.0
             orientation = -5.0
-            dof_acc = -0.0
-            joint_power = -0.0
             base_height = -5.0
-            foot_clearance = -0.0
+            lin_vel_z = -1.0
+            ang_vel_xy = -0.05
+            collision = -0.1
+            stand_still = -1.0
+            stand_still_wheels = -1.0
+            hip_pos = -2.0
+            all_joint_pos = -0.1
+            raibert_foothold = -2.0
+
+            # Active smoothness/limit penalties
             action_rate = -0.01
             smoothness = -0.01
             wheel_action_rate = -0.01
             wheel_smoothness = -0.01
-            wheel_vel_ref_tracking = 3.0
-            feet_air_time = 0.0
-            collision = -0.1
-            feet_stumble = -0.0
-            stand_still = -1.0
             torques = -1e-7
             dof_vel = -1e-7
             dof_pos_limits = -10.0
-            dof_vel_limits = -0.0
             torque_limits = -1e-5
+
+            # Disabled rewards/penalties
+            dof_acc = -0.0
+            joint_power = -0.0
+            foot_clearance = -0.0
+            feet_air_time = 0.0
+            feet_stumble = -0.0
+            dof_vel_limits = -0.0
             trot = 0.0
-            hip_pos = -2.0
-            all_joint_pos = -0.1
             foot_slip = -0.0
             foot_impact_vel = -0.0
-            progress = 1.0
             raibert = 0.0
-            raibert_foothold = -1.0
 
     class env(BlackCfg.env):
         num_envs = 4096
@@ -350,31 +352,36 @@ class BlackWCfgPPO(BlackCfgPPO):
         # 单帧观测布局:
         # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)
         # 左右镜像下: vx 保持, vy/yaw 取反; wx/wz 取反, wy 保持; gravity 的 y 分量取反。
-        # 关节/轮子按 FL<->FR, RL<->RR 交换。
-        # 轮子项使用负号, 因为当前资产左右轮关节轴方向相反, 与 wheel_forward_sign 的定义一致。
+        # 腿关节按 FL<->FR, RL<->RR 交换；轮子相关维度保持 identity，不参与对称损失。
         sym_loss = True
         obs_permutation = [
             0.00001, -1, -2,
             -3, 4, -5,
             6, -7, 8,
-            -13, -14, -15, -16,
-            -9, -10, -11, -12,
-            -21, -22, -23, -24,
-            -17, -18, -19, -20,
-            -29, -30, -31, -32,
-            -25, -26, -27, -28,
-            -37, -38, -39, -40,
-            -33, -34, -35, -36,
-            -45, -46, -47, -48,
-            -41, -42, -43, -44,
-            -53, -54, -55, -56,
-            -49, -50, -51, -52,
+            -13, -14, -15, 12,
+            -9, -10, -11, 16,
+            -21, -22, -23, 20,
+            -17, -18, -19, 24,
+            -29, -30, -31, 28,
+            -25, -26, -27, 32,
+            -37, -38, -39, 36,
+            -33, -34, -35, 40,
+            -45, -46, -47, 44,
+            -41, -42, -43, 48,
+            -53, -54, -55, 52,
+            -49, -50, -51, 56,
         ]
         act_permutation = [
-            -4, -5, -6, -7,
-            -0.0001, -1, -2, -3,
-            -12, -13, -14, -15,
-            -8, -9, -10, -11,
+            -4, -5, -6, 3,
+            -0.0001, -1, -2, 7,
+            -12, -13, -14, 11,
+            -8, -9, -10, 15,
+        ]
+        sym_action_mask = [
+            1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
         ]
         frame_stack = 6
         sym_coef = 1.0

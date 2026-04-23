@@ -267,16 +267,15 @@ class BlackWEnv(BlackEnv):
         return torch.sum(torch.square(err), dim=1) 
 
     def _reward_wheel_vel_ref_tracking(self):
-        cfg = self.cfg.rewards.wheel_guidance
+        sigma = 8.0
         wheel_vel = self.dof_vel[:, self.wheel_indices]
         target = self._target_wheel_velocities()
         err = wheel_vel - target
-
-        vx_gate = torch.clamp(torch.abs(self.commands[:, 0]) / max(cfg.vx_gate_ref, 1e-6), 0.0, 1.0)
-        yaw_gate = torch.clamp(torch.abs(self.commands[:, 2]) / max(cfg.yaw_gate_ref, 1e-6), 0.0, 1.0)
-        active_gate = torch.maximum(vx_gate, yaw_gate)
-        gate = cfg.min_gate + (1.0 - cfg.min_gate) * active_gate
-        return torch.exp(-torch.mean(torch.square(err), dim=1) / max(cfg.sigma, 1e-6)) * gate
+        move_cmd = (
+            (torch.abs(self.commands[:, 0]) > 0.1)
+            | (torch.abs(self.commands[:, 2]) > 0.1)
+        ).float()
+        return torch.exp(-torch.mean(torch.square(err), dim=1) / max(sigma, 1e-6)) * move_cmd
 
     def _reward_raibert_foothold(self):
         foot_pos_body, _ = self._get_feet_state_in_body_frame()
@@ -295,8 +294,13 @@ class BlackWEnv(BlackEnv):
             dim=1,
         )
         leg_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.leg_dof_indices]), dim=1)
+        # wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
+        return (pos_error + 0.05 * leg_vel_error) * is_still
+
+    def _reward_stand_still_wheels(self):
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
         wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
-        return (pos_error + 0.05 * leg_vel_error + 0.02 * wheel_vel_error) * is_still
+        return wheel_vel_error * is_still
 
     def _reward_dof_pos_limits(self):
         dof_pos = self.dof_pos[:, self.leg_dof_indices]

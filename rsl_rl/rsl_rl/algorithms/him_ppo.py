@@ -59,6 +59,7 @@ class HIMPPO:
                  sym_loss = False,
                  obs_permutation = None,
                  act_permutation = None,
+                 sym_action_mask = None,
                  frame_stack = 15,
                  sym_coef = 1.0,
                  ):
@@ -94,6 +95,9 @@ class HIMPPO:
             self.act_perm_mat = torch.zeros((len(act_permutation), len(act_permutation))).cuda()
             for i, perm in enumerate(act_permutation):
                 self.act_perm_mat[int(abs(perm))][i] = np.sign(perm) 
+            if sym_action_mask is None:
+                sym_action_mask = [1.0] * len(act_permutation)
+            self.sym_action_mask = torch.tensor(sym_action_mask, dtype=torch.float, device="cuda")
             obs_permutation_stack = []
             for i in range(frame_stack):
                 for p in obs_permutation:
@@ -166,7 +170,8 @@ class HIMPPO:
                     self.actor_critic.update_distribution(mirror_obs)
                     mirror_mu = self.actor_critic.action_mean
                     m_mirror_mu = torch.matmul(mirror_mu,self.act_perm_mat)#将对称观察下的动作均值映射到原动作空间
-                    sym_loss = (mu_batch-m_mirror_mu).pow(2).mean()
+                    sym_error = (mu_batch - m_mirror_mu).pow(2) * self.sym_action_mask
+                    sym_loss = (sym_error.sum(dim=-1) / torch.clamp(self.sym_action_mask.sum(), min=1.0)).mean()
                     # print("shapes:",obs_batch.shape,mirror_obs.shape,mirror_act.shape,m_mirror_act.shape,mu_batch.shape) 
 
                 # KL
