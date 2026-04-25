@@ -143,6 +143,20 @@ class BlackWCfg(BlackCfg):
         # 延迟步数范围
         lag_timesteps = 3
 
+        class wheel_mass_curriculum:
+            enabled = True
+            # Progressively increase wheel-body mass/inertia from easier-to-lift
+            # settings to the real model. The final stage must be 1.0.
+            stage_scales = [0.1, 0.35, 0.65, 1.0]
+            initial_stage = 0
+            ema_alpha = 0.2
+            required_passes = 2
+            min_episode_length_ratio = 0.7
+            feet_air_time_threshold = 0.02
+            trot_threshold = 1.0
+            tracking_lin_vel_y_threshold = 0.8
+            tracking_ang_vel_threshold = 0.6
+
     class noise(BlackCfg.noise):
         add_noise = True
         noise_level = 1.0  # scales other values
@@ -256,10 +270,10 @@ class BlackWCfg(BlackCfg):
 
         class scales(BlackCfg.rewards.scales):
             # Active task rewards
-            progress = 1.0
+            progress = 2.0
             tracking_lin_vel = 2.0
             tracking_lin_vel_y = 2.0
-            tracking_ang_vel = 1.5
+            tracking_ang_vel = 2.0
             wheel_vel_ref_tracking = 0.5
 
             # Active posture/contact penalties
@@ -274,10 +288,10 @@ class BlackWCfg(BlackCfg):
             hip_pos = -2.0
             all_joint_pos = -0.1
             foothold = -1.0
-            foot_clearance = -3.0
-            feet_air_time = 5.0
+            foot_clearance = -2.0
+            feet_air_time = 20.0
             foot_impact_vel = -5.0
-            trot = 1.0
+            trot = 2.0
 
             # Active smoothness/limit penalties
             action_rate = -0.01
