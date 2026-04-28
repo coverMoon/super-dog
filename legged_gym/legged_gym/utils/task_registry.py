@@ -228,8 +228,9 @@ class TaskRegistry():
         # override cfg from args (if specified)
         _, train_cfg = update_cfg_from_args(None, train_cfg, args)
 
+        default_log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
         if log_root=="default":
-            log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
+            log_root = default_log_root
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         elif log_root is None:
             log_dir = None
@@ -241,7 +242,8 @@ class TaskRegistry():
         resume_path = None
         if resume:
             # load previously trained model
-            resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
+            load_root = default_log_root if log_root is None else log_root
+            resume_path = get_load_path(load_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
             #resume_path = "/home/windnotebook/PROJECT/RoboCon/Dog/HIMLoco/legged_gym/logs/rough_black_dog/Dec23_23-53-16_/model_280.pt"
             print(f"Loading model from: {resume_path}")
 
