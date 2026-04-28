@@ -97,8 +97,8 @@ class BlackWCfg(BlackCfg):
         stand_command_prob = 0.1
         x_command_prob = 0.0
         y_command_prob = 0.0
-        yaw_command_prob = 0.2
-        mixed_command_prob = 0.7
+        yaw_command_prob = 0.3
+        mixed_command_prob = 0.6
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -194,6 +194,7 @@ class BlackWCfg(BlackCfg):
         clearance_height_target = 0.06  # only for y/yaw
         
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
+        tracking_ang_vel_sigma = 1.0
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -256,7 +257,7 @@ class BlackWCfg(BlackCfg):
             max_linear_offset_y = 0.06
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.08
+            max_yaw_offset = 0.1
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
             late_swing_start_latyaw = 0.1

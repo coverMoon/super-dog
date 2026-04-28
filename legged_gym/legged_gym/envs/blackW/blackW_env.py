@@ -326,6 +326,11 @@ class BlackWEnv(BlackEnv):
         lin_vel_y_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
         return torch.exp(-lin_vel_y_error / self.cfg.rewards.tracking_sigma)
 
+    def _reward_tracking_ang_vel(self):
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        sigma = getattr(self.cfg.rewards, "tracking_ang_vel_sigma", self.cfg.rewards.tracking_sigma)
+        return torch.exp(-ang_vel_error / sigma)
+
     def _reward_trot(self):
         contact_force_z = self.contact_forces[:, self.feet_indices, 2]
         contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
