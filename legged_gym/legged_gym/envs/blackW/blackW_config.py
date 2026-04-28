@@ -94,11 +94,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.05
+        stand_command_prob = 0.1
         x_command_prob = 0.0
         y_command_prob = 0.0
-        yaw_command_prob = 0.0
-        mixed_command_prob = 0.95
+        yaw_command_prob = 0.2
+        mixed_command_prob = 0.7
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -279,7 +279,7 @@ class BlackWCfg(BlackCfg):
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             collision = -0.1
-            stand_still = -3.0
+            stand_still = -5.0
             stand_still_wheels = -2.0
             hip_pos = -3.0
             all_joint_pos = -0.5
