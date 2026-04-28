@@ -236,16 +236,19 @@ class TaskRegistry():
         else:
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         
-        train_cfg_dict = class_to_dict(train_cfg)
-        _save_training_snapshot(log_dir, name, env.cfg, train_cfg, args)
-        runner = HIMOnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
         #save resume path before creating a new log_dir
         resume = train_cfg.runner.resume
+        resume_path = None
         if resume:
             # load previously trained model
             resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
             #resume_path = "/home/windnotebook/PROJECT/RoboCon/Dog/HIMLoco/legged_gym/logs/rough_black_dog/Dec23_23-53-16_/model_280.pt"
             print(f"Loading model from: {resume_path}")
+
+        train_cfg_dict = class_to_dict(train_cfg)
+        _save_training_snapshot(log_dir, name, env.cfg, train_cfg, args)
+        runner = HIMOnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
+        if resume:
             runner.load(resume_path)
         return runner, train_cfg
 

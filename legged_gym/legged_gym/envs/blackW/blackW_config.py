@@ -94,11 +94,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.1
+        stand_command_prob = 0.05
         x_command_prob = 0.0
         y_command_prob = 0.0
         yaw_command_prob = 0.0
-        mixed_command_prob = 0.9
+        mixed_command_prob = 0.95
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -259,7 +259,7 @@ class BlackWCfg(BlackCfg):
             max_yaw_offset = 0.08
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
-            late_swing_start_latyaw = 0.15
+            late_swing_start_latyaw = 0.1
             touchdown_gain = 0.4
             approach_bonus = 0.25
             max_approach_speed = 0.4
@@ -268,7 +268,7 @@ class BlackWCfg(BlackCfg):
             # Active task rewards
             progress = 2.0
             tracking_lin_vel = 2.0
-            tracking_lin_vel_y = 10.0
+            tracking_lin_vel_y = 5.0
             tracking_ang_vel = 10.0
             wheel_vel_ref_tracking = 0.5
 
