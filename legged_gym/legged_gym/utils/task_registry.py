@@ -28,7 +28,9 @@
 #
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
+import json
 import os
+import subprocess
 from datetime import datetime
 from typing import Tuple
 import torch
@@ -40,6 +42,97 @@ from rsl_rl.runners import OnPolicyRunner, HIMOnPolicyRunner
 from legged_gym import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
 from .helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if torch.is_tensor(value):
+        return value.detach().cpu().tolist()
+    if isinstance(value, torch.device):
+        return str(value)
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if hasattr(value, "__dict__"):
+        return _json_safe(vars(value))
+    return str(value)
+
+def _find_git_root(start_dir):
+    current = os.path.abspath(start_dir)
+    while True:
+        if os.path.isdir(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+
+def _git_command(git_root, command):
+    try:
+        result = subprocess.run(
+            ["git"] + command,
+            cwd=git_root,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except Exception as err:
+        return None, str(err)
+    if result.returncode != 0:
+        return None, result.stderr.strip()
+    return result.stdout.strip(), None
+
+def _save_training_snapshot(log_dir, task_name, env_cfg, train_cfg, args):
+    if log_dir is None:
+        return
+
+    os.makedirs(log_dir, exist_ok=True)
+
+    snapshot = {
+        "task": task_name,
+        "log_dir": log_dir,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "args": _json_safe(vars(args)),
+        "env_cfg": _json_safe(class_to_dict(env_cfg)),
+        "train_cfg": _json_safe(class_to_dict(train_cfg)),
+    }
+    with open(os.path.join(log_dir, "config.json"), "w", encoding="utf-8") as file:
+        json.dump(snapshot, file, indent=2, sort_keys=True)
+        file.write("\n")
+
+    git_root = _find_git_root(LEGGED_GYM_ROOT_DIR)
+    git_metadata = {"git_root": git_root}
+    if git_root is not None:
+        for key, command in (
+            ("commit", ["rev-parse", "HEAD"]),
+            ("short_commit", ["rev-parse", "--short", "HEAD"]),
+            ("branch", ["rev-parse", "--abbrev-ref", "HEAD"]),
+            ("status_short", ["status", "--short"]),
+        ):
+            output, error = _git_command(git_root, command)
+            git_metadata[key] = output
+            if error is not None:
+                git_metadata[key + "_error"] = error
+        git_metadata["dirty"] = bool(git_metadata.get("status_short"))
+
+        diff, error = _git_command(git_root, ["diff", "--binary"])
+        if diff:
+            with open(os.path.join(log_dir, "git_diff.patch"), "w", encoding="utf-8") as file:
+                file.write(diff)
+                file.write("\n")
+        elif error is not None:
+            git_metadata["diff_error"] = error
+
+    with open(os.path.join(log_dir, "git_metadata.json"), "w", encoding="utf-8") as file:
+        json.dump(_json_safe(git_metadata), file, indent=2, sort_keys=True)
+        file.write("\n")
 
 class TaskRegistry():
     def __init__(self):
@@ -144,6 +237,7 @@ class TaskRegistry():
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         
         train_cfg_dict = class_to_dict(train_cfg)
+        _save_training_snapshot(log_dir, name, env.cfg, train_cfg, args)
         runner = HIMOnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
         #save resume path before creating a new log_dir
         resume = train_cfg.runner.resume

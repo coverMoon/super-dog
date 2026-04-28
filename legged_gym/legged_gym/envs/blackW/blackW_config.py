@@ -92,6 +92,16 @@ class BlackWCfg(BlackCfg):
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10.  # time before command are changed[s]
         heading_command = False  # if true: compute ang vel command from heading error
+        
+        # 指定命令空间和采样概率
+        stand_command_prob = 0.1
+        x_command_prob = 0.0
+        y_command_prob = 0.0
+        yaw_command_prob = 0.0
+        mixed_command_prob = 0.9
+        # 最小非零命令值
+        min_nonzero_lin_cmd = 0.2
+        min_nonzero_yaw_cmd = 0.2
 
         class ranges(BlackCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
@@ -143,20 +153,6 @@ class BlackWCfg(BlackCfg):
         # 延迟步数范围
         lag_timesteps = 3
 
-        class wheel_mass_curriculum:
-            enabled = True
-            # Progressively increase wheel-body mass/inertia from easier-to-lift
-            # settings to the real model. The final stage must be 1.0.
-            stage_scales = [0.1, 0.35, 0.65, 1.0]
-            initial_stage = 0
-            ema_alpha = 0.2
-            required_passes = 2
-            min_episode_length_ratio = 0.7
-            feet_air_time_threshold = 0.02
-            trot_threshold = 1.0
-            tracking_lin_vel_y_threshold = 0.8
-            tracking_ang_vel_threshold = 0.6
-
     class noise(BlackCfg.noise):
         add_noise = True
         noise_level = 1.0  # scales other values
@@ -194,8 +190,8 @@ class BlackWCfg(BlackCfg):
         slope_treshold = 0.75
 
     class rewards(BlackCfg.rewards):
-        cycle_time = 0.8    # not for blackW
-        clearance_height_target = 0.08  # not for blackW
+        cycle_time = 0.8    # only for y/yaw
+        clearance_height_target = 0.06  # only for y/yaw
         
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
@@ -260,10 +256,10 @@ class BlackWCfg(BlackCfg):
             max_linear_offset_y = 0.06
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.10
+            max_yaw_offset = 0.08
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
-            late_swing_start_latyaw = 0.0
+            late_swing_start_latyaw = 0.15
             touchdown_gain = 0.4
             approach_bonus = 0.25
             max_approach_speed = 0.4
@@ -272,8 +268,8 @@ class BlackWCfg(BlackCfg):
             # Active task rewards
             progress = 2.0
             tracking_lin_vel = 2.0
-            tracking_lin_vel_y = 2.0
-            tracking_ang_vel = 2.0
+            tracking_lin_vel_y = 10.0
+            tracking_ang_vel = 10.0
             wheel_vel_ref_tracking = 0.5
 
             # Active posture/contact penalties
@@ -283,15 +279,16 @@ class BlackWCfg(BlackCfg):
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             collision = -0.1
-            stand_still = -1.0
-            stand_still_wheels = -1.0
-            hip_pos = -2.0
-            all_joint_pos = -0.1
+            stand_still = -3.0
+            stand_still_wheels = -2.0
+            hip_pos = -3.0
+            all_joint_pos = -0.5
             foothold = -1.0
-            foot_clearance = -2.0
-            feet_air_time = 20.0
+            foot_clearance = -3.0
+            feet_air_time = 5.0
             foot_impact_vel = -5.0
-            trot = 2.0
+            trot = 10.0
+            raibert = 2.0
 
             # Active smoothness/limit penalties
             action_rate = -0.01
@@ -309,7 +306,6 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.0
             dof_vel_limits = -0.0
             foot_slip = -0.0
-            raibert = 0.0
 
     class env(BlackCfg.env):
         num_envs = 4096
@@ -408,4 +404,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations =1000
+        max_iterations = 1000

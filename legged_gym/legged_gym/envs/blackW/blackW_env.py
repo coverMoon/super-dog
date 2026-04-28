@@ -15,7 +15,6 @@ class BlackWEnv(BlackEnv):
     def _init_buffers(self):
         super()._init_buffers()
         self._init_blackW_dof_indices()
-        self._init_wheel_mass_curriculum()
 
     def _init_blackW_dof_indices(self):
         wheel_names = []
@@ -68,128 +67,67 @@ class BlackWEnv(BlackEnv):
         print("### blackW wheel forward sign:", self.wheel_forward_sign.detach().cpu().tolist())
         print("### blackW wheel control mode:", self.cfg.control.wheel_control_mode)
 
-    def _init_wheel_mass_curriculum(self):
-        cfg = getattr(self.cfg.domain_rand, "wheel_mass_curriculum", None)
-        self.wheel_mass_curriculum_enabled = bool(cfg is not None and getattr(cfg, "enabled", False))
-        self.wheel_mass_stage_scales = [float(scale) for scale in getattr(cfg, "stage_scales", [1.0])]
-        if len(self.wheel_mass_stage_scales) == 0:
-            self.wheel_mass_stage_scales = [1.0]
+    def _sample_signed_command(self, env_ids, command_name, min_abs):
+        low, high = self.command_ranges[command_name]
+        max_abs = max(abs(low), abs(high))
+        if max_abs <= min_abs:
+            return torch.zeros(len(env_ids), device=self.device)
 
-        initial_stage = int(getattr(cfg, "initial_stage", 0)) if cfg is not None else 0
-        self.wheel_mass_stage = max(0, min(initial_stage, len(self.wheel_mass_stage_scales) - 1))
-        self.wheel_mass_scale = 1.0
-        self.wheel_mass_stage_pass_streak = 0
-        self.wheel_mass_curr_updated = 0.0
-        self.wheel_mass_curr_progressed = 0.0
-        self.wheel_mass_curr_air_time_ema = 0.0
-        self.wheel_mass_curr_trot_ema = 0.0
-        self.wheel_mass_curr_track_y_ema = 0.0
-        self.wheel_mass_curr_track_yaw_ema = 0.0
-        self.wheel_mass_curr_episode_ratio_ema = 0.0
-
-        if not self.wheel_mass_curriculum_enabled:
-            return
-
-        self._apply_wheel_mass_scale(
-            torch.arange(self.num_envs, device=self.device),
-            self.wheel_mass_stage_scales[self.wheel_mass_stage],
+        magnitude = min_abs + (max_abs - min_abs) * torch.rand(len(env_ids), device=self.device)
+        sign = torch.where(
+            torch.rand(len(env_ids), device=self.device) < 0.5,
+            -torch.ones(len(env_ids), device=self.device),
+            torch.ones(len(env_ids), device=self.device),
         )
+        return torch.clamp(sign * magnitude, min=low, max=high)
 
-    def _scale_inertia_matrix(self, inertia, scale):
-        inertia.x.x *= scale
-        inertia.x.y *= scale
-        inertia.x.z *= scale
-        inertia.y.x *= scale
-        inertia.y.y *= scale
-        inertia.y.z *= scale
-        inertia.z.x *= scale
-        inertia.z.y *= scale
-        inertia.z.z *= scale
-
-    def _apply_wheel_mass_scale(self, env_ids, target_scale):
-        if not self.wheel_mass_curriculum_enabled or len(env_ids) == 0:
+    def _resample_commands(self, env_ids):
+        if len(env_ids) == 0:
             return
 
-        ratio = float(target_scale) / max(float(self.wheel_mass_scale), 1e-6)
-        if abs(ratio - 1.0) < 1e-8:
-            return
+        self.commands[env_ids, :] = 0.0
 
-        wheel_body_ids = self.feet_indices.detach().cpu().tolist()
-        env_ids_cpu = env_ids.detach().cpu().tolist()
-        for env_id in env_ids_cpu:
-            env_handle = self.envs[env_id]
-            actor_handle = self.actor_handles[env_id]
-            body_props = self.gym.get_actor_rigid_body_properties(env_handle, actor_handle)
-            for body_id in wheel_body_ids:
-                body_props[body_id].mass *= ratio
-                self._scale_inertia_matrix(body_props[body_id].inertia, ratio)
-            self.gym.set_actor_rigid_body_properties(
-                env_handle,
-                actor_handle,
-                body_props,
-                recomputeInertia=False,
-            )
-        self.wheel_mass_scale = float(target_scale)
+        probs = self.commands.new_tensor([
+            getattr(self.cfg.commands, "stand_command_prob", 0.15),
+            getattr(self.cfg.commands, "x_command_prob", 0.25),
+            getattr(self.cfg.commands, "y_command_prob", 0.25),
+            getattr(self.cfg.commands, "yaw_command_prob", 0.25),
+            getattr(self.cfg.commands, "mixed_command_prob", 0.10),
+        ])
+        probs = probs / torch.clamp(torch.sum(probs), min=1e-6)
+        bins = torch.cumsum(probs, dim=0)
+        sample = torch.rand(len(env_ids), device=self.device)
 
-    def _wheel_mass_metric_value(self, key):
-        value = self.extras.get("episode", {}).get(key)
-        if value is None:
-            return float("nan")
-        if isinstance(value, torch.Tensor):
-            return float(value.detach().cpu().item())
-        return float(value)
+        stand_mask = sample < bins[0]
+        x_mask = (sample >= bins[0]) & (sample < bins[1])
+        y_mask = (sample >= bins[1]) & (sample < bins[2])
+        yaw_mask = (sample >= bins[2]) & (sample < bins[3])
+        mixed_mask = sample >= bins[3]
 
-    def _update_wheel_mass_curriculum(self, env_ids, mean_episode_length_s):
-        self.wheel_mass_curr_updated = 0.0
-        self.wheel_mass_curr_progressed = 0.0
-        if not self.wheel_mass_curriculum_enabled or len(env_ids) == 0:
-            return
+        min_lin = float(getattr(self.cfg.commands, "min_nonzero_lin_cmd", 0.2))
+        min_yaw = float(getattr(self.cfg.commands, "min_nonzero_yaw_cmd", 0.2))
 
-        if self.wheel_mass_stage >= len(self.wheel_mass_stage_scales) - 1:
-            return
+        x_ids = env_ids[x_mask]
+        y_ids = env_ids[y_mask]
+        yaw_ids = env_ids[yaw_mask]
+        mixed_ids = env_ids[mixed_mask]
 
-        cfg = self.cfg.domain_rand.wheel_mass_curriculum
-        air_time = self._wheel_mass_metric_value("rew_feet_air_time")
-        trot = self._wheel_mass_metric_value("rew_trot")
-        track_y = self._wheel_mass_metric_value("rew_tracking_lin_vel_y")
-        track_yaw = self._wheel_mass_metric_value("rew_tracking_ang_vel")
-        if not all(torch.isfinite(torch.tensor(v)) for v in [air_time, trot, track_y, track_yaw, mean_episode_length_s]):
-            self.wheel_mass_stage_pass_streak = 0
-            return
+        if len(x_ids) > 0:
+            self.commands[x_ids, 0] = self._sample_signed_command(x_ids, "lin_vel_x", min_lin)
+        if len(y_ids) > 0:
+            self.commands[y_ids, 1] = self._sample_signed_command(y_ids, "lin_vel_y", min_lin)
+        if len(yaw_ids) > 0:
+            self.commands[yaw_ids, 2] = self._sample_signed_command(yaw_ids, "ang_vel_yaw", min_yaw)
+        if len(mixed_ids) > 0:
+            self.commands[mixed_ids, 0] = self._sample_signed_command(mixed_ids, "lin_vel_x", min_lin)
+            self.commands[mixed_ids, 1] = self._sample_signed_command(mixed_ids, "lin_vel_y", min_lin)
+            self.commands[mixed_ids, 2] = self._sample_signed_command(mixed_ids, "ang_vel_yaw", min_yaw)
 
-        self.wheel_mass_curr_updated = 1.0
-        ema_alpha = float(getattr(cfg, "ema_alpha", 0.2))
-        episode_ratio = mean_episode_length_s / max(self.max_episode_length_s, 1e-6)
-        self.wheel_mass_curr_air_time_ema = (1.0 - ema_alpha) * self.wheel_mass_curr_air_time_ema + ema_alpha * air_time
-        self.wheel_mass_curr_trot_ema = (1.0 - ema_alpha) * self.wheel_mass_curr_trot_ema + ema_alpha * trot
-        self.wheel_mass_curr_track_y_ema = (1.0 - ema_alpha) * self.wheel_mass_curr_track_y_ema + ema_alpha * track_y
-        self.wheel_mass_curr_track_yaw_ema = (1.0 - ema_alpha) * self.wheel_mass_curr_track_yaw_ema + ema_alpha * track_yaw
-        self.wheel_mass_curr_episode_ratio_ema = (
-            (1.0 - ema_alpha) * self.wheel_mass_curr_episode_ratio_ema + ema_alpha * episode_ratio
-        )
-
-        tracking_ok = (
-            self.wheel_mass_curr_track_y_ema >= float(getattr(cfg, "tracking_lin_vel_y_threshold", 0.75))
-            or self.wheel_mass_curr_track_yaw_ema >= float(getattr(cfg, "tracking_ang_vel_threshold", 0.18))
-        )
-        passed = (
-            self.wheel_mass_curr_episode_ratio_ema >= float(getattr(cfg, "min_episode_length_ratio", 0.7))
-            and self.wheel_mass_curr_air_time_ema >= float(getattr(cfg, "feet_air_time_threshold", 0.02))
-            and self.wheel_mass_curr_trot_ema >= float(getattr(cfg, "trot_threshold", 0.45))
-            and tracking_ok
-        )
-
-        if passed:
-            self.wheel_mass_stage_pass_streak += 1
-        else:
-            self.wheel_mass_stage_pass_streak = 0
-
-        required_passes = max(1, int(getattr(cfg, "required_passes", 2)))
-        if self.wheel_mass_stage_pass_streak >= required_passes:
-            self.wheel_mass_stage += 1
-            self.wheel_mass_stage_pass_streak = 0
-            self.wheel_mass_curr_progressed = 1.0
-            self._apply_wheel_mass_scale(torch.arange(self.num_envs, device=self.device), self.wheel_mass_stage_scales[self.wheel_mass_stage])
+        if self.cfg.commands.heading_command:
+            self.commands[env_ids, 3] = torch.rand(len(env_ids), device=self.device) * (
+                self.command_ranges["heading"][1] - self.command_ranges["heading"][0]
+            ) + self.command_ranges["heading"][0]
+            self.commands[env_ids[stand_mask], 3] = 0.0
 
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign
@@ -354,22 +292,6 @@ class BlackWEnv(BlackEnv):
             self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs],
         ), dim=-1)[env_ids]
 
-    def reset_idx(self, env_ids):
-        mean_episode_length_s = float(torch.mean(self.episode_length_buf[env_ids].float() * self.dt).item()) if len(env_ids) > 0 else 0.0
-        super().reset_idx(env_ids)
-        self._update_wheel_mass_curriculum(env_ids, mean_episode_length_s)
-        if self.wheel_mass_curriculum_enabled:
-            self.extras["episode"]["wheel_mass_stage"] = float(self.wheel_mass_stage)
-            self.extras["episode"]["wheel_mass_scale"] = float(self.wheel_mass_scale)
-            self.extras["episode"]["wheel_mass_curr_air_time_ema"] = float(self.wheel_mass_curr_air_time_ema)
-            self.extras["episode"]["wheel_mass_curr_trot_ema"] = float(self.wheel_mass_curr_trot_ema)
-            self.extras["episode"]["wheel_mass_curr_track_y_ema"] = float(self.wheel_mass_curr_track_y_ema)
-            self.extras["episode"]["wheel_mass_curr_track_yaw_ema"] = float(self.wheel_mass_curr_track_yaw_ema)
-            self.extras["episode"]["wheel_mass_curr_episode_ratio_ema"] = float(self.wheel_mass_curr_episode_ratio_ema)
-            self.extras["episode"]["wheel_mass_curr_pass_streak"] = float(self.wheel_mass_stage_pass_streak)
-            self.extras["episode"]["wheel_mass_curr_updated"] = float(self.wheel_mass_curr_updated)
-            self.extras["episode"]["wheel_mass_curr_progressed"] = float(self.wheel_mass_curr_progressed)
-    
 # ==========================================================================
 # Reward function components
 # ========================================================================== 
@@ -379,7 +301,7 @@ class BlackWEnv(BlackEnv):
             dim=1,
         )
         is_straight_command = (torch.abs(self.commands[:, 1]) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
-        scale = torch.where(is_straight_command, 1.0, 0.)
+        scale = torch.where(is_straight_command, 1.0, 0.2)
         return scale * penalty
 
     def _reward_all_joint_pos(self):
@@ -407,41 +329,26 @@ class BlackWEnv(BlackEnv):
     def _reward_trot(self):
         contact_force_z = self.contact_forces[:, self.feet_indices, 2]
         contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
-        feet_height = torch.clamp(self._get_wheel_bottom_heights(), min=0.0)
 
         fl = contact_prob[:, self.foot_name_to_index["FL"]]
         fr = contact_prob[:, self.foot_name_to_index["FR"]]
         rl = contact_prob[:, self.foot_name_to_index["RL"]]
         rr = contact_prob[:, self.foot_name_to_index["RR"]]
-        h_fl = feet_height[:, self.foot_name_to_index["FL"]]
-        h_fr = feet_height[:, self.foot_name_to_index["FR"]]
-        h_rl = feet_height[:, self.foot_name_to_index["RL"]]
-        h_rr = feet_height[:, self.foot_name_to_index["RR"]]
-
-        stance_mask = self._get_gait_phase().float()
-        stance_diag1 = stance_mask[:, 0]
-        stance_diag2 = stance_mask[:, 1]
-
-        swing_diag1 = 1.0 - stance_diag1
-        swing_diag2 = 1.0 - stance_diag2
-
-        diag1_contact = 0.5 * (fl + rr)
-        diag2_contact = 0.5 * (fr + rl)
-        diag1_height = 0.5 * (h_fl + h_rr)
-        diag2_height = 0.5 * (h_fr + h_rl)
 
         diag1_sync = 1.0 - torch.abs(fl - rr)
         diag2_sync = 1.0 - torch.abs(fr - rl)
-        stance_sync = stance_diag1 * diag1_sync + stance_diag2 * diag2_sync
-        swing_sync = swing_diag1 * diag1_sync + swing_diag2 * diag2_sync
 
-        stance_support = stance_diag1 * diag1_contact + stance_diag2 * diag2_contact
-        swing_clear = swing_diag1 * (1.0 - diag1_contact) + swing_diag2 * (1.0 - diag2_contact)
-        swing_height = swing_diag1 * diag1_height + swing_diag2 * diag2_height
-        min_swing_height = 0.6 * self.cfg.rewards.clearance_height_target
-        swing_lift = torch.clamp(swing_height / max(min_swing_height, 1e-6), min=0.0, max=1.0)
+        s1 = 0.5 * (fl + rr)
+        s2 = 0.5 * (fr + rl)
 
-        rew = stance_support * swing_clear * swing_lift * 0.5 * (stance_sync + swing_sync)
+        stance_mask = self._get_gait_phase().float()
+        target_s1, target_s2 = stance_mask[:, 0], stance_mask[:, 1]
+
+        stance_score = target_s1 * s1 + target_s2 * s2
+        swing_score = target_s1 * (1.0 - s2) + target_s2 * (1.0 - s1)
+        sync_score = target_s1 * diag1_sync + target_s2 * diag2_sync
+
+        rew = stance_score * swing_score * sync_score
         return rew * self._gait_cmd_mask().float()
 
     def _reward_foot_clearance(self):
@@ -501,6 +408,81 @@ class BlackWEnv(BlackEnv):
         scale = torch.where(self._gait_cmd_mask(), 0.1, 1.0)
         return penalty * scale
 
+    def _reward_raibert(self):
+        move_cmd = self._gait_cmd_mask()
+        if not torch.any(move_cmd).item():
+            return torch.zeros(self.num_envs, device=self.device)
+
+        cfg = self.cfg.rewards.raibert
+        foot_pos_body, foot_vel_body = self._get_feet_state_in_body_frame()
+        nominal_xy = self.nominal_foothold_xy.unsqueeze(0)
+
+        y_limit = max(
+            abs(self.command_ranges["lin_vel_y"][0]),
+            abs(self.command_ranges["lin_vel_y"][1]),
+            1e-6,
+        )
+        yaw_limit = max(
+            abs(self.command_ranges["ang_vel_yaw"][0]),
+            abs(self.command_ranges["ang_vel_yaw"][1]),
+            1e-6,
+        )
+
+        cmd_y_norm = torch.clamp(self.commands[:, 1].view(self.num_envs, 1, 1) / y_limit, min=-1.0, max=1.0)
+        vel_y_error_norm = torch.clamp(
+            (self.commands[:, 1] - self.base_lin_vel[:, 1]).view(self.num_envs, 1, 1) / y_limit,
+            min=-1.0,
+            max=1.0,
+        )
+        lateral_drive = torch.clamp(cmd_y_norm + cfg.vel_error_gain * vel_y_error_norm, min=-1.0, max=1.0)
+        lateral_offset = torch.cat(
+            (
+                torch.zeros_like(lateral_drive),
+                lateral_drive * cfg.max_linear_offset_y,
+            ),
+            dim=2,
+        )
+
+        yaw_norm = torch.clamp(self.commands[:, 2].view(self.num_envs, 1, 1) / yaw_limit, min=-1.0, max=1.0)
+        yaw_basis = torch.stack(
+            (-self.nominal_foothold_xy[:, 1], self.nominal_foothold_xy[:, 0]),
+            dim=1,
+        )
+        yaw_basis = yaw_basis / torch.clamp(torch.norm(yaw_basis, dim=1, keepdim=True), min=1e-6)
+        yaw_offset = cfg.max_yaw_offset * cfg.yaw_gain * yaw_norm * yaw_basis.unsqueeze(0)
+
+        target_xy = nominal_xy + lateral_offset + yaw_offset
+        xy_error = foot_pos_body[:, :, :2] - target_xy
+        tracking_reward = torch.exp(
+            -torch.sum(torch.square(xy_error), dim=2) / max(cfg.tracking_sigma ** 2, 1e-6)
+        )
+
+        phase = self._get_phase().unsqueeze(1)
+        feet_phases = (phase + self.foot_phase_offsets.unsqueeze(0)) % 1.0
+        swing_progress = torch.clamp((feet_phases - 0.5) * 2.0, min=0.0, max=1.0)
+        late_swing_start = getattr(cfg, "late_swing_start_latyaw", getattr(cfg, "late_swing_start", 0.15))
+        late_swing = torch.clamp(
+            (swing_progress - late_swing_start) / max(1e-6, 1.0 - late_swing_start),
+            min=0.0,
+            max=1.0,
+        )
+
+        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
+        swing_air = 1.0 - contact_prob
+        planning_weight = late_swing * swing_air
+
+        target_dir = target_xy - foot_pos_body[:, :, :2]
+        target_dir = target_dir / torch.clamp(torch.norm(target_dir, dim=2, keepdim=True), min=1e-6)
+        approach_speed = torch.sum(foot_vel_body[:, :, :2] * target_dir, dim=2)
+        approach_bonus = torch.clamp(approach_speed, min=0.0, max=cfg.max_approach_speed) / max(
+            cfg.max_approach_speed,
+            1e-6,
+        )
+
+        reward = planning_weight * (tracking_reward + cfg.approach_bonus * approach_bonus)
+        return torch.sum(reward, dim=1) * move_cmd.float()
+
     def _reward_stand_still(self):
         is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
         pos_error = torch.sum(
@@ -509,7 +491,7 @@ class BlackWEnv(BlackEnv):
         )
         leg_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.leg_dof_indices]), dim=1)
         # wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
-        return (pos_error + 0.05 * leg_vel_error) * is_still
+        return (pos_error + 0.1 * leg_vel_error) * is_still
 
     def _reward_stand_still_wheels(self):
         is_still = torch.abs(self.commands[:, 0]) < 0.1
