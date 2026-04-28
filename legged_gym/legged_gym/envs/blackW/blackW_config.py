@@ -97,8 +97,8 @@ class BlackWCfg(BlackCfg):
         stand_command_prob = 0.1
         x_command_prob = 0.0
         y_command_prob = 0.0
-        yaw_command_prob = 0.4
-        mixed_command_prob = 0.5
+        yaw_command_prob = 0.35
+        mixed_command_prob = 0.55
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -281,7 +281,7 @@ class BlackWCfg(BlackCfg):
             ang_vel_xy = -0.05
             collision = -0.1
             stand_still = -5.0
-            stand_still_wheels = -2.0
+            stand_still_wheels = -3.0
             hip_pos = -3.0
             all_joint_pos = -0.5
             foothold = -1.0
@@ -405,4 +405,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 700
+        max_iterations = 500
