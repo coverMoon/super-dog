@@ -95,10 +95,10 @@ class BlackWCfg(BlackCfg):
         
         # 指定命令空间和采样概率
         stand_command_prob = 0.1
-        x_command_prob = 0.0
-        y_command_prob = 0.0
-        yaw_command_prob = 0.35
-        mixed_command_prob = 0.55
+        x_command_prob = 0.3
+        y_command_prob = 0.3
+        yaw_command_prob = 0.3
+        mixed_command_prob = 0.0
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -269,8 +269,8 @@ class BlackWCfg(BlackCfg):
             # Active task rewards
             progress = 2.0
             tracking_lin_vel = 2.0
-            tracking_lin_vel_y = 5.0
-            tracking_ang_vel = 15.0
+            tracking_lin_vel_y = 15.0
+            tracking_ang_vel = 20.0
             wheel_vel_ref_tracking = 0.5
 
             # Active posture/contact penalties
@@ -292,9 +292,9 @@ class BlackWCfg(BlackCfg):
             raibert = 2.0
 
             # Active smoothness/limit penalties
-            action_rate = -0.01
-            smoothness = -0.01
-            wheel_action_rate = -0.01
+            action_rate = -0.05
+            smoothness = -0.02
+            wheel_action_rate = -0.05
             wheel_smoothness = -0.01
             torques = -1e-7
             dof_vel = -1e-7
