@@ -155,8 +155,10 @@ class BlackWEnv(BlackEnv):
     
     def _target_wheel_velocities(self):
         lin_x = self.commands[:, 0].unsqueeze(1)
+        yaw = self.commands[:, 2].unsqueeze(1)
         radius = max(self.cfg.control.wheel_radius, 1e-6)
-        target = lin_x / radius
+        half_width = self.cfg.control.wheel_base_half_width
+        target = (lin_x - yaw * self.wheel_side_sign.unsqueeze(0) * half_width) / radius
         return target * self.wheel_forward_sign.unsqueeze(0)
 
     def _compute_torques(self, actions):
@@ -199,11 +201,43 @@ class BlackWEnv(BlackEnv):
             return self._target_wheel_velocities() + signed_wheel_actions * self.cfg.control.wheel_residual_scale
         raise NameError(f"Unknown wheel control mode: {mode}")
 
+    def check_termination(self):
+        super().check_termination()
+
+        yaw_cmd = torch.abs(self.commands[:, 2]) > self.cfg.env.stuck_command_threshold
+        yaw_progress = torch.sign(self.commands[:, 2]) * self.base_ang_vel[:, 2]
+        yaw_stalled = yaw_progress < self.cfg.env.stuck_yaw_vel_threshold
+        grace_done = (self.episode_length_buf.float() * self.dt) > self.cfg.env.stuck_grace_s
+        stuck_mask = yaw_cmd & yaw_stalled & grace_done
+
+        self.stuck_time = torch.where(stuck_mask, self.stuck_time + self.dt, self.stuck_time)
+        self.reset_buf |= self.stuck_time > self.cfg.env.stuck_timeout_s
+
     def _gait_cmd_mask(self):
         return (
             (torch.abs(self.commands[:, 1]) > 0.1)
             | (torch.abs(self.commands[:, 2]) > 0.1)
         )
+
+    def _command_activity(self, command):
+        deadzone = getattr(self.cfg.rewards, "command_activity_deadzone", 0.05)
+        full = getattr(self.cfg.rewards, "command_activity_full", 0.2)
+        span = max(full - deadzone, 1e-6)
+        return torch.clamp((torch.abs(command) - deadzone) / span, min=0.0, max=1.0)
+
+    def _axis_tracking_progress_reward(self, command, actual, min_ref):
+        activity = self._command_activity(command)
+        ref = torch.clamp(torch.abs(command), min=min_ref)
+        rel_error = (command - actual) / ref
+        tracking_sigma = max(getattr(self.cfg.rewards, "relative_tracking_sigma", 0.25), 1e-6)
+        tracking = torch.exp(-torch.square(rel_error) / tracking_sigma)
+
+        signed_progress = torch.sign(command) * actual
+        progress = torch.clamp(signed_progress / ref, min=0.0, max=1.0)
+
+        tracking_weight = getattr(self.cfg.rewards, "tracking_reward_weight", 0.6)
+        progress_weight = getattr(self.cfg.rewards, "progress_reward_weight", 0.4)
+        return activity * (tracking_weight * tracking + progress_weight * progress)
 
     def _get_wheel_bottom_heights(self):
         # blackW's "foot" links are wheel bodies, so feet_pos is the wheel-center
@@ -311,25 +345,41 @@ class BlackWEnv(BlackEnv):
         return penalty * scale
 
     def _reward_wheel_vel_ref_tracking(self):
-        sigma = 8.0
         wheel_vel = self.dof_vel[:, self.wheel_indices]
         target = self._target_wheel_velocities()
-        err = wheel_vel - target
-        move_cmd = (torch.abs(self.commands[:, 0]) > 0.1).float()
-        return torch.exp(-torch.mean(torch.square(err), dim=1) / max(sigma, 1e-6)) * move_cmd
+        err = torch.sqrt(torch.mean(torch.square(wheel_vel - target), dim=1))
+        ref = torch.clamp(
+            torch.mean(torch.abs(target), dim=1),
+            min=getattr(self.cfg.rewards, "wheel_tracking_min_ref", 0.5),
+        )
+        sigma = max(getattr(self.cfg.rewards, "wheel_tracking_relative_sigma", 0.25), 1e-6)
+        tracking = torch.exp(-torch.square(err / ref) / sigma)
+        move_cmd = torch.maximum(self._command_activity(self.commands[:, 0]), self._command_activity(self.commands[:, 2]))
+        return tracking * move_cmd
 
     def _reward_tracking_lin_vel(self):
-        lin_vel_x_error = torch.square(self.commands[:, 0] - self.base_lin_vel[:, 0])
-        return torch.exp(-lin_vel_x_error / self.cfg.rewards.tracking_sigma)
+        min_ref = getattr(self.cfg.rewards, "relative_tracking_min_lin_cmd", 0.2)
+        return self._axis_tracking_progress_reward(self.commands[:, 0], self.base_lin_vel[:, 0], min_ref)
 
     def _reward_tracking_lin_vel_y(self):
-        lin_vel_y_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
-        return torch.exp(-lin_vel_y_error / self.cfg.rewards.tracking_sigma)
+        min_ref = getattr(self.cfg.rewards, "relative_tracking_min_lin_cmd", 0.2)
+        return self._axis_tracking_progress_reward(self.commands[:, 1], self.base_lin_vel[:, 1], min_ref)
 
     def _reward_tracking_ang_vel(self):
-        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
-        sigma = getattr(self.cfg.rewards, "tracking_ang_vel_sigma", self.cfg.rewards.tracking_sigma)
-        return torch.exp(-ang_vel_error / sigma)
+        min_ref = getattr(self.cfg.rewards, "relative_tracking_min_yaw_cmd", 0.3)
+        return self._axis_tracking_progress_reward(self.commands[:, 2], self.base_ang_vel[:, 2], min_ref)
+
+    def _reward_inactive_axis_vel(self):
+        x_activity = self._command_activity(self.commands[:, 0])
+        y_activity = self._command_activity(self.commands[:, 1])
+        yaw_activity = self._command_activity(self.commands[:, 2])
+        lin_weight = getattr(self.cfg.rewards, "inactive_lin_vel_weight", 1.0)
+        yaw_weight = getattr(self.cfg.rewards, "inactive_ang_vel_weight", 0.25)
+        return (
+            lin_weight * (1.0 - x_activity) * torch.square(self.base_lin_vel[:, 0])
+            + lin_weight * (1.0 - y_activity) * torch.square(self.base_lin_vel[:, 1])
+            + yaw_weight * (1.0 - yaw_activity) * torch.square(self.base_ang_vel[:, 2])
+        )
 
     def _reward_trot(self):
         contact_force_z = self.contact_forces[:, self.feet_indices, 2]
@@ -499,7 +549,7 @@ class BlackWEnv(BlackEnv):
         return (pos_error + 0.1 * leg_vel_error) * is_still
 
     def _reward_stand_still_wheels(self):
-        is_still = torch.abs(self.commands[:, 0]) < 0.1
+        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
         wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
         return wheel_vel_error * is_still
 

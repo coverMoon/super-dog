@@ -195,6 +195,17 @@ class BlackWCfg(BlackCfg):
         
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         tracking_ang_vel_sigma = 1.0
+        command_activity_deadzone = 0.05
+        command_activity_full = 0.2
+        relative_tracking_sigma = 0.25
+        relative_tracking_min_lin_cmd = 0.2
+        relative_tracking_min_yaw_cmd = 0.3
+        tracking_reward_weight = 0.6
+        progress_reward_weight = 0.4
+        inactive_lin_vel_weight = 1.0
+        inactive_ang_vel_weight = 0.25
+        wheel_tracking_relative_sigma = 0.25
+        wheel_tracking_min_ref = 0.5
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -267,11 +278,10 @@ class BlackWCfg(BlackCfg):
 
         class scales(BlackCfg.rewards.scales):
             # Active task rewards
-            progress = 2.0
             tracking_lin_vel = 2.0
-            tracking_lin_vel_y = 15.0
-            tracking_ang_vel = 20.0
-            wheel_vel_ref_tracking = 0.5
+            tracking_lin_vel_y = 2.0
+            tracking_ang_vel = 2.0
+            wheel_vel_ref_tracking = 1.0
 
             # Active posture/contact penalties
             termination = -500.0
@@ -279,6 +289,7 @@ class BlackWCfg(BlackCfg):
             base_height = -5.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
+            inactive_axis_vel = -0.5
             collision = -0.1
             stand_still = -5.0
             stand_still_wheels = -3.0
@@ -286,10 +297,10 @@ class BlackWCfg(BlackCfg):
             all_joint_pos = -0.5
             foothold = -1.0
             foot_clearance = -3.0
-            feet_air_time = 5.0
+            feet_air_time = 0.8
             foot_impact_vel = -5.0
-            trot = 10.0
-            raibert = 2.0
+            trot = 1.0
+            raibert = 1.0
 
             # Active smoothness/limit penalties
             action_rate = -0.05
@@ -302,6 +313,7 @@ class BlackWCfg(BlackCfg):
             torque_limits = -1e-5
 
             # Disabled rewards/penalties
+            progress = 0.0
             dof_acc = -0.0
             joint_power = -0.0
             feet_stumble = -0.0
@@ -324,6 +336,7 @@ class BlackWCfg(BlackCfg):
         episode_length_s = 20
         stuck_timeout_s = 4.0
         stuck_vel_threshold = 0.05
+        stuck_yaw_vel_threshold = 0.1
         stuck_command_threshold = 0.2
         stuck_grace_s = 1.0
 
