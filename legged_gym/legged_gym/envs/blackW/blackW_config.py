@@ -85,10 +85,16 @@ class BlackWCfg(BlackCfg):
     class commands(BlackCfg.commands):
         curriculum = True
         max_curriculum = 2.0
-        curriculum_threshold = 0.7
-        curriculum_ema_alpha = 0.2
+        curriculum_threshold = 0.6
+        curriculum_ema_alpha = 0.5
         curriculum_required_passes = 2
-        curriculum_buffer_min = 256
+        curriculum_buffer_min = 128
+        max_curriculum_y = 1.0
+        max_curriculum_yaw = 3.14
+        y_curriculum_threshold = 0.45
+        yaw_curriculum_threshold = 0.35
+        y_curriculum_step = 0.1
+        yaw_curriculum_step = 0.2
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10.  # time before command are changed[s]
         heading_command = False  # if true: compute ang vel command from heading error
@@ -105,8 +111,8 @@ class BlackWCfg(BlackCfg):
 
         class ranges(BlackCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
-            ang_vel_yaw = [-3.14, 3.14]  # min max [rad/s]
+            lin_vel_y = [-0.3, 0.3]  # min max [m/s]
+            ang_vel_yaw = [-0.8, 0.8]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
     class domain_rand(BlackCfg.domain_rand):
@@ -278,10 +284,10 @@ class BlackWCfg(BlackCfg):
 
         class scales(BlackCfg.rewards.scales):
             # Active task rewards
-            tracking_lin_vel = 2.0
-            tracking_lin_vel_y = 2.0
-            tracking_ang_vel = 2.0
-            wheel_vel_ref_tracking = 1.0
+            tracking_lin_vel = 5.0
+            tracking_lin_vel_y = 5.0
+            tracking_ang_vel = 5.0
+            wheel_vel_ref_tracking = 2.0
 
             # Active posture/contact penalties
             termination = -500.0
@@ -299,8 +305,8 @@ class BlackWCfg(BlackCfg):
             foot_clearance = -3.0
             feet_air_time = 0.8
             foot_impact_vel = -5.0
-            trot = 1.0
-            raibert = 1.0
+            trot = 2.0
+            raibert = 2.0
 
             # Active smoothness/limit penalties
             action_rate = -0.05
@@ -321,7 +327,7 @@ class BlackWCfg(BlackCfg):
             foot_slip = -0.0
 
     class env(BlackCfg.env):
-        num_envs = 4096
+        num_envs = 8192
         # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)
         num_one_step_observations = 3 + 3 + 3 + 16 + 16 + 16
         num_observations = num_one_step_observations * 6
@@ -366,7 +372,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.001
+        entropy_coef = 0.003
         num_learning_epochs = 5
         num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 2.e-4  # 5.e-4
@@ -375,7 +381,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         lam = 0.95
         desired_kl = 0.01
         learning_rate_min = 1e-5
-        learning_rate_max = 1e-3
+        learning_rate_max = 5e-3
         max_grad_norm = 1.
         # 单帧观测布局:
         # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16)

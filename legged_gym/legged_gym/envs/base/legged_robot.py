@@ -242,10 +242,30 @@ class LeggedRobot(BaseTask):
             self.extras["episode"]["cmd_curr_high_ratio_ema"] = getattr(self, "cmd_curr_ema_high", float('nan'))
             self.extras["episode"]["cmd_curr_ratio_ema"] = getattr(self, "cmd_curr_ema_high", float('nan'))
             self.extras["episode"]["cmd_curr_pass_streak"] = getattr(self, "cmd_curr_pass_streak", 0)
-            self.extras["episode"]["cmd_curr_sample_count"] = getattr(self, "last_cmd_curr_high_count", 0)
+            self.extras["episode"]["cmd_curr_sample_count"] = getattr(self, "last_cmd_curr_eval_count", getattr(self, "last_cmd_curr_high_count", 0))
             self.extras["episode"]["cmd_curr_low_count"] = getattr(self, "last_cmd_curr_low_count", 0)
             self.extras["episode"]["cmd_curr_progressed"] = getattr(self, "last_cmd_curr_progressed", 0.0)
             self.extras["episode"]["cmd_curr_threshold_ratio"] = getattr(self, "last_cmd_curr_threshold_ratio", 0.8)
+            if hasattr(self, "cmd_curr_y_ema_high"):
+                self.extras["episode"]["max_command_y"] = self.command_ranges["lin_vel_y"][1]
+                self.extras["episode"]["cmd_curr_y_low_ratio_ema"] = getattr(self, "cmd_curr_y_ema_low", float("nan"))
+                self.extras["episode"]["cmd_curr_y_high_ratio_ema"] = getattr(self, "cmd_curr_y_ema_high", float("nan"))
+                self.extras["episode"]["cmd_curr_y_ratio_ema"] = getattr(self, "cmd_curr_y_ema_high", float("nan"))
+                self.extras["episode"]["cmd_curr_y_pass_streak"] = getattr(self, "cmd_curr_y_pass_streak", 0)
+                self.extras["episode"]["cmd_curr_y_sample_count"] = getattr(self, "last_cmd_curr_y_sample_count", 0)
+                self.extras["episode"]["cmd_curr_y_low_count"] = getattr(self, "last_cmd_curr_y_low_count", 0)
+                self.extras["episode"]["cmd_curr_y_progressed"] = getattr(self, "last_cmd_curr_y_progressed", 0.0)
+                self.extras["episode"]["cmd_curr_y_threshold_ratio"] = getattr(self, "last_cmd_curr_y_threshold_ratio", float("nan"))
+            if hasattr(self, "cmd_curr_yaw_ema_high"):
+                self.extras["episode"]["max_command_yaw"] = self.command_ranges["ang_vel_yaw"][1]
+                self.extras["episode"]["cmd_curr_yaw_low_ratio_ema"] = getattr(self, "cmd_curr_yaw_ema_low", float("nan"))
+                self.extras["episode"]["cmd_curr_yaw_high_ratio_ema"] = getattr(self, "cmd_curr_yaw_ema_high", float("nan"))
+                self.extras["episode"]["cmd_curr_yaw_ratio_ema"] = getattr(self, "cmd_curr_yaw_ema_high", float("nan"))
+                self.extras["episode"]["cmd_curr_yaw_pass_streak"] = getattr(self, "cmd_curr_yaw_pass_streak", 0)
+                self.extras["episode"]["cmd_curr_yaw_sample_count"] = getattr(self, "last_cmd_curr_yaw_sample_count", 0)
+                self.extras["episode"]["cmd_curr_yaw_low_count"] = getattr(self, "last_cmd_curr_yaw_low_count", 0)
+                self.extras["episode"]["cmd_curr_yaw_progressed"] = getattr(self, "last_cmd_curr_yaw_progressed", 0.0)
+                self.extras["episode"]["cmd_curr_yaw_threshold_ratio"] = getattr(self, "last_cmd_curr_yaw_threshold_ratio", float("nan"))
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf

@@ -15,6 +15,38 @@ class BlackWEnv(BlackEnv):
     def _init_buffers(self):
         super()._init_buffers()
         self._init_blackW_dof_indices()
+        self._init_blackW_command_curriculum()
+
+    def _init_blackW_command_curriculum(self):
+        self.cmd_curr_segment_len = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
+        self.cmd_curr_segment_sums = {
+            "tracking_lin_vel": torch.zeros(self.num_envs, device=self.device, requires_grad=False),
+            "tracking_lin_vel_y": torch.zeros(self.num_envs, device=self.device, requires_grad=False),
+            "tracking_ang_vel": torch.zeros(self.num_envs, device=self.device, requires_grad=False),
+        }
+
+        self.cmd_curr_ema_low = 0.0
+        self.cmd_curr_ema_high = 0.0
+        self.cmd_curr_pass_streak = 0
+        self.cmd_curr_buffer_cmd_x = []
+        self.cmd_curr_buffer_ratio = []
+        self.last_cmd_curr_low_count = 0
+        self.last_cmd_curr_high_count = 0
+        self.last_cmd_curr_eval_count = 0
+        self.last_cmd_curr_progressed = 0.0
+        self.last_cmd_curr_threshold_ratio = float(getattr(self.cfg.commands, "curriculum_threshold", 0.8))
+
+        for axis in ("y", "yaw"):
+            setattr(self, f"cmd_curr_{axis}_ema_low", 0.0)
+            setattr(self, f"cmd_curr_{axis}_ema_high", 0.0)
+            setattr(self, f"cmd_curr_{axis}_pass_streak", 0)
+            setattr(self, f"cmd_curr_{axis}_buffer_cmd", [])
+            setattr(self, f"cmd_curr_{axis}_buffer_ratio", [])
+            setattr(self, f"last_cmd_curr_{axis}_low_count", 0)
+            setattr(self, f"last_cmd_curr_{axis}_high_count", 0)
+            setattr(self, f"last_cmd_curr_{axis}_sample_count", 0)
+            setattr(self, f"last_cmd_curr_{axis}_progressed", 0.0)
+            setattr(self, f"last_cmd_curr_{axis}_threshold_ratio", float("nan"))
 
     def _init_blackW_dof_indices(self):
         wheel_names = []
@@ -128,6 +160,198 @@ class BlackWEnv(BlackEnv):
                 self.command_ranges["heading"][1] - self.command_ranges["heading"][0]
             ) + self.command_ranges["heading"][0]
             self.commands[env_ids[stand_mask], 3] = 0.0
+
+    def _post_physics_step_callback(self):
+        resample_interval = int(self.cfg.commands.resampling_time / self.dt)
+        env_ids = (self.episode_length_buf % resample_interval == 0).nonzero(as_tuple=False).flatten()
+        self._finalize_command_curriculum_segments(env_ids)
+        super()._post_physics_step_callback()
+
+    def compute_reward(self):
+        tracked_names = [name for name in self.cmd_curr_segment_sums if name in self.episode_sums]
+        before = {name: self.episode_sums[name].clone() for name in tracked_names}
+        super().compute_reward()
+        for name in tracked_names:
+            self.cmd_curr_segment_sums[name] += self.episode_sums[name] - before[name]
+        self.cmd_curr_segment_len += 1.0
+
+    def reset_idx(self, env_ids):
+        self._finalize_command_curriculum_segments(env_ids)
+        super().reset_idx(env_ids)
+
+    def update_command_curriculum(self, env_ids):
+        self._update_axis_command_curriculum(
+            axis_name="x",
+            command_name="lin_vel_x",
+            threshold=getattr(self.cfg.commands, "curriculum_threshold", 0.7),
+            step=0.1,
+            target_abs=getattr(self.cfg.commands, "max_curriculum", 2.0),
+            min_abs=getattr(self.cfg.commands, "min_nonzero_lin_cmd", 0.2),
+            split_fraction=0.6,
+        )
+        self._update_axis_command_curriculum(
+            axis_name="y",
+            command_name="lin_vel_y",
+            threshold=getattr(self.cfg.commands, "y_curriculum_threshold", 0.45),
+            step=getattr(self.cfg.commands, "y_curriculum_step", 0.1),
+            target_abs=getattr(self.cfg.commands, "max_curriculum_y", 1.0),
+            min_abs=getattr(self.cfg.commands, "min_nonzero_lin_cmd", 0.2),
+            split_fraction=0.5,
+        )
+        self._update_axis_command_curriculum(
+            axis_name="yaw",
+            command_name="ang_vel_yaw",
+            threshold=getattr(self.cfg.commands, "yaw_curriculum_threshold", 0.4),
+            step=getattr(self.cfg.commands, "yaw_curriculum_step", 0.2),
+            target_abs=getattr(self.cfg.commands, "max_curriculum_yaw", 3.14),
+            min_abs=getattr(self.cfg.commands, "min_nonzero_yaw_cmd", 0.2),
+            split_fraction=0.5,
+        )
+
+    def _finalize_command_curriculum_segments(self, env_ids):
+        if len(env_ids) == 0 or not hasattr(self, "cmd_curr_segment_len"):
+            return
+
+        valid = self.cmd_curr_segment_len[env_ids] > 0
+        if not torch.any(valid):
+            return
+
+        ids = env_ids[valid]
+        segment_len = self.cmd_curr_segment_len[ids]
+        self._append_axis_command_curriculum_segments(
+            axis_name="x",
+            command_idx=0,
+            reward_name="tracking_lin_vel",
+            env_ids=ids,
+            segment_len=segment_len,
+            min_abs=getattr(self.cfg.commands, "min_nonzero_lin_cmd", 0.2),
+        )
+        self._append_axis_command_curriculum_segments(
+            axis_name="y",
+            command_idx=1,
+            reward_name="tracking_lin_vel_y",
+            env_ids=ids,
+            segment_len=segment_len,
+            min_abs=getattr(self.cfg.commands, "min_nonzero_lin_cmd", 0.2),
+        )
+        self._append_axis_command_curriculum_segments(
+            axis_name="yaw",
+            command_idx=2,
+            reward_name="tracking_ang_vel",
+            env_ids=ids,
+            segment_len=segment_len,
+            min_abs=getattr(self.cfg.commands, "min_nonzero_yaw_cmd", 0.2),
+        )
+
+        self.cmd_curr_segment_len[ids] = 0.0
+        for segment_sum in self.cmd_curr_segment_sums.values():
+            segment_sum[ids] = 0.0
+
+    def _append_axis_command_curriculum_segments(self, axis_name, command_idx, reward_name, env_ids, segment_len, min_abs):
+        reward_scale = abs(self.reward_scales.get(reward_name, 0.0))
+        if reward_scale <= 0.0:
+            return
+
+        sample_cmd = torch.abs(self.commands[env_ids, command_idx]).detach().cpu()
+        sample_ratio = (self.cmd_curr_segment_sums[reward_name][env_ids] / segment_len / reward_scale).detach().cpu()
+        finite_mask = torch.isfinite(sample_ratio) & torch.isfinite(sample_cmd) & (sample_cmd >= min_abs)
+        if not torch.any(finite_mask):
+            return
+
+        cmd_buffer, ratio_buffer = self._axis_curriculum_buffers(axis_name)
+        cmd_buffer.append(sample_cmd[finite_mask])
+        ratio_buffer.append(sample_ratio[finite_mask])
+
+    def _update_axis_command_curriculum(self, axis_name, command_name, threshold, step, target_abs, min_abs, split_fraction):
+        self._set_axis_curriculum_attr(axis_name, "progressed", 0.0)
+        self._set_axis_curriculum_attr(axis_name, "threshold_ratio", float(threshold))
+
+        cmd_buffer, ratio_buffer = self._axis_curriculum_buffers(axis_name)
+        buffer_min = max(1, int(getattr(self.cfg.commands, "curriculum_buffer_min", 256)))
+        buffer_count = sum(chunk.numel() for chunk in cmd_buffer)
+        self._set_axis_curriculum_attr(axis_name, "sample_count", int(buffer_count))
+        self._set_axis_curriculum_attr(axis_name, "low_count", 0)
+        self._set_axis_curriculum_attr(axis_name, "high_count", 0)
+        if buffer_count < buffer_min:
+            return
+
+        env_cmd = torch.cat(cmd_buffer)
+        per_segment_ratio = torch.cat(ratio_buffer)
+        current_max = max(abs(self.command_ranges[command_name][0]), abs(self.command_ranges[command_name][1]))
+        command_floor = min(min_abs, current_max)
+        split = command_floor + split_fraction * max(current_max - command_floor, 1e-6)
+        low_mask = (env_cmd >= command_floor) & (env_cmd <= split)
+        high_mask = env_cmd > split
+        low_count = int(torch.sum(low_mask).item())
+        high_count = int(torch.sum(high_mask).item())
+        self._set_axis_curriculum_attr(axis_name, "low_count", low_count)
+        self._set_axis_curriculum_attr(axis_name, "high_count", high_count)
+
+        min_low_count = 8
+        min_high_count = 4
+        if low_count < min_low_count or high_count < min_high_count:
+            self._set_axis_curriculum_attr(axis_name, "pass_streak", 0)
+            return
+
+        low_ratio = torch.mean(per_segment_ratio[low_mask])
+        high_ratio = torch.mean(per_segment_ratio[high_mask])
+        if not torch.isfinite(low_ratio) or not torch.isfinite(high_ratio):
+            self._set_axis_curriculum_attr(axis_name, "pass_streak", 0)
+            return
+
+        ema_alpha = getattr(self.cfg.commands, "curriculum_ema_alpha", 0.1)
+        ema_low = (1.0 - ema_alpha) * self._get_axis_curriculum_attr(axis_name, "ema_low") + ema_alpha * low_ratio.item()
+        ema_high = (1.0 - ema_alpha) * self._get_axis_curriculum_attr(axis_name, "ema_high") + ema_alpha * high_ratio.item()
+        self._set_axis_curriculum_attr(axis_name, "ema_low", ema_low)
+        self._set_axis_curriculum_attr(axis_name, "ema_high", ema_high)
+
+        high_threshold = max(0.0, threshold - 0.1)
+        if ema_low > threshold and ema_high > high_threshold:
+            self._set_axis_curriculum_attr(axis_name, "pass_streak", self._get_axis_curriculum_attr(axis_name, "pass_streak") + 1)
+        else:
+            self._set_axis_curriculum_attr(axis_name, "pass_streak", 0)
+
+        required_passes = max(1, int(getattr(self.cfg.commands, "curriculum_required_passes", 1)))
+        if self._get_axis_curriculum_attr(axis_name, "pass_streak") >= required_passes and current_max < target_abs:
+            new_max = min(current_max + step, target_abs)
+            self.command_ranges[command_name][0] = -new_max
+            self.command_ranges[command_name][1] = new_max
+            self._set_axis_curriculum_attr(axis_name, "progressed", 1.0)
+            self._set_axis_curriculum_attr(axis_name, "pass_streak", 0)
+
+        cmd_buffer.clear()
+        ratio_buffer.clear()
+
+    def _axis_curriculum_buffers(self, axis_name):
+        if axis_name == "x":
+            return self.cmd_curr_buffer_cmd_x, self.cmd_curr_buffer_ratio
+        return getattr(self, f"cmd_curr_{axis_name}_buffer_cmd"), getattr(self, f"cmd_curr_{axis_name}_buffer_ratio")
+
+    def _get_axis_curriculum_attr(self, axis_name, name):
+        if axis_name == "x":
+            mapping = {
+                "ema_low": "cmd_curr_ema_low",
+                "ema_high": "cmd_curr_ema_high",
+                "pass_streak": "cmd_curr_pass_streak",
+            }
+            return getattr(self, mapping[name])
+        return getattr(self, f"cmd_curr_{axis_name}_{name}")
+
+    def _set_axis_curriculum_attr(self, axis_name, name, value):
+        if axis_name == "x":
+            mapping = {
+                "ema_low": "cmd_curr_ema_low",
+                "ema_high": "cmd_curr_ema_high",
+                "pass_streak": "cmd_curr_pass_streak",
+                "low_count": "last_cmd_curr_low_count",
+                "high_count": "last_cmd_curr_high_count",
+                "sample_count": "last_cmd_curr_eval_count",
+                "progressed": "last_cmd_curr_progressed",
+                "threshold_ratio": "last_cmd_curr_threshold_ratio",
+            }
+            setattr(self, mapping[name], value)
+            return
+        setattr(self, f"last_cmd_curr_{axis_name}_{name}" if name in ("low_count", "high_count", "sample_count", "progressed", "threshold_ratio") else f"cmd_curr_{axis_name}_{name}", value)
 
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign
