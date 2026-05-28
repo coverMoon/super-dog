@@ -237,35 +237,17 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.curriculum:
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
         if self.cfg.commands.curriculum:
-            self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
-            self.extras["episode"]["cmd_curr_low_ratio_ema"] = getattr(self, "cmd_curr_ema_low", float('nan'))
-            self.extras["episode"]["cmd_curr_high_ratio_ema"] = getattr(self, "cmd_curr_ema_high", float('nan'))
-            self.extras["episode"]["cmd_curr_ratio_ema"] = getattr(self, "cmd_curr_ema_high", float('nan'))
-            self.extras["episode"]["cmd_curr_pass_streak"] = getattr(self, "cmd_curr_pass_streak", 0)
-            self.extras["episode"]["cmd_curr_sample_count"] = getattr(self, "last_cmd_curr_eval_count", getattr(self, "last_cmd_curr_high_count", 0))
-            self.extras["episode"]["cmd_curr_low_count"] = getattr(self, "last_cmd_curr_low_count", 0)
-            self.extras["episode"]["cmd_curr_progressed"] = getattr(self, "last_cmd_curr_progressed", 0.0)
-            self.extras["episode"]["cmd_curr_threshold_ratio"] = getattr(self, "last_cmd_curr_threshold_ratio", 0.8)
-            if hasattr(self, "cmd_curr_y_ema_high"):
-                self.extras["episode"]["max_command_y"] = self.command_ranges["lin_vel_y"][1]
-                self.extras["episode"]["cmd_curr_y_low_ratio_ema"] = getattr(self, "cmd_curr_y_ema_low", float("nan"))
-                self.extras["episode"]["cmd_curr_y_high_ratio_ema"] = getattr(self, "cmd_curr_y_ema_high", float("nan"))
-                self.extras["episode"]["cmd_curr_y_ratio_ema"] = getattr(self, "cmd_curr_y_ema_high", float("nan"))
-                self.extras["episode"]["cmd_curr_y_pass_streak"] = getattr(self, "cmd_curr_y_pass_streak", 0)
-                self.extras["episode"]["cmd_curr_y_sample_count"] = getattr(self, "last_cmd_curr_y_sample_count", 0)
-                self.extras["episode"]["cmd_curr_y_low_count"] = getattr(self, "last_cmd_curr_y_low_count", 0)
+            self.extras["episode"]["cmd_curr_x_range"] = self.command_ranges["lin_vel_x"][1]
+            self.extras["episode"]["cmd_curr_x_score"] = getattr(self, "last_cmd_curr_score", float("nan"))
+            self.extras["episode"]["cmd_curr_x_progressed"] = getattr(self, "last_cmd_curr_progressed", 0.0)
+            if hasattr(self, "last_cmd_curr_y_score"):
+                self.extras["episode"]["cmd_curr_y_range"] = self.command_ranges["lin_vel_y"][1]
+                self.extras["episode"]["cmd_curr_y_score"] = getattr(self, "last_cmd_curr_y_score", float("nan"))
                 self.extras["episode"]["cmd_curr_y_progressed"] = getattr(self, "last_cmd_curr_y_progressed", 0.0)
-                self.extras["episode"]["cmd_curr_y_threshold_ratio"] = getattr(self, "last_cmd_curr_y_threshold_ratio", float("nan"))
-            if hasattr(self, "cmd_curr_yaw_ema_high"):
-                self.extras["episode"]["max_command_yaw"] = self.command_ranges["ang_vel_yaw"][1]
-                self.extras["episode"]["cmd_curr_yaw_low_ratio_ema"] = getattr(self, "cmd_curr_yaw_ema_low", float("nan"))
-                self.extras["episode"]["cmd_curr_yaw_high_ratio_ema"] = getattr(self, "cmd_curr_yaw_ema_high", float("nan"))
-                self.extras["episode"]["cmd_curr_yaw_ratio_ema"] = getattr(self, "cmd_curr_yaw_ema_high", float("nan"))
-                self.extras["episode"]["cmd_curr_yaw_pass_streak"] = getattr(self, "cmd_curr_yaw_pass_streak", 0)
-                self.extras["episode"]["cmd_curr_yaw_sample_count"] = getattr(self, "last_cmd_curr_yaw_sample_count", 0)
-                self.extras["episode"]["cmd_curr_yaw_low_count"] = getattr(self, "last_cmd_curr_yaw_low_count", 0)
+            if hasattr(self, "last_cmd_curr_yaw_score"):
+                self.extras["episode"]["cmd_curr_yaw_range"] = self.command_ranges["ang_vel_yaw"][1]
+                self.extras["episode"]["cmd_curr_yaw_score"] = getattr(self, "last_cmd_curr_yaw_score", float("nan"))
                 self.extras["episode"]["cmd_curr_yaw_progressed"] = getattr(self, "last_cmd_curr_yaw_progressed", 0.0)
-                self.extras["episode"]["cmd_curr_yaw_threshold_ratio"] = getattr(self, "last_cmd_curr_yaw_threshold_ratio", float("nan"))
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
@@ -660,7 +642,9 @@ class LeggedRobot(BaseTask):
         self.last_cmd_curr_high_ratio = float('nan')
         self.last_cmd_curr_low_ang_ratio = float('nan')
         self.last_cmd_curr_high_ang_ratio = float('nan')
-        self.last_cmd_curr_threshold_ratio = float(getattr(self.cfg.commands, "curriculum_threshold", 0.8))
+        curriculum_threshold = getattr(self.cfg.commands, "curriculum_threshold", 0.8)
+        self.last_cmd_curr_threshold_ratio = float(curriculum_threshold)
+        self.last_cmd_curr_score = self._command_curriculum_score(curriculum_threshold)
         self.last_cmd_curr_eval_count = 0
 
         if len(env_ids) == 0:
@@ -709,7 +693,6 @@ class LeggedRobot(BaseTask):
 
         low_ratio = torch.mean(per_env_ratio[low_vel_mask])
         high_ratio = torch.mean(per_env_ratio[high_vel_mask])
-        curriculum_threshold = getattr(self.cfg.commands, "curriculum_threshold", 0.8)
         low_threshold = curriculum_threshold
         high_threshold = max(0.0, curriculum_threshold - 0.1)
         ema_alpha = getattr(self.cfg.commands, "curriculum_ema_alpha", 0.1)
@@ -730,6 +713,7 @@ class LeggedRobot(BaseTask):
 
         self.cmd_curr_ema_low = (1.0 - ema_alpha) * self.cmd_curr_ema_low + ema_alpha * low_ratio.item()
         self.cmd_curr_ema_high = (1.0 - ema_alpha) * self.cmd_curr_ema_high + ema_alpha * high_ratio.item()
+        self.last_cmd_curr_score = self._command_curriculum_score(curriculum_threshold)
 
         if self.cmd_curr_ema_low > low_threshold and self.cmd_curr_ema_high > high_threshold:
             self.cmd_curr_pass_streak += 1
@@ -745,6 +729,12 @@ class LeggedRobot(BaseTask):
 
         self.cmd_curr_buffer_cmd_x = []
         self.cmd_curr_buffer_ratio = []
+
+    def _command_curriculum_score(self, threshold):
+        high_threshold = max(0.0, threshold - 0.1)
+        if threshold <= 0.0 or high_threshold <= 0.0:
+            return float("nan")
+        return min(self.cmd_curr_ema_low / threshold, self.cmd_curr_ema_high / high_threshold)
 
 
     def _get_noise_scale_vec(self, cfg):
@@ -860,6 +850,7 @@ class LeggedRobot(BaseTask):
         self.cmd_curr_ema_low = 0.0
         self.cmd_curr_ema_high = 0.0
         self.cmd_curr_pass_streak = 0
+        self.last_cmd_curr_score = 0.0
         self.cmd_curr_buffer_cmd_x = []
         self.cmd_curr_buffer_ratio = []
         

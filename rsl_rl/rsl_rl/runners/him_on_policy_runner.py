@@ -30,6 +30,7 @@
 
 import time
 import os
+import json
 from collections import deque
 import statistics
 
@@ -151,21 +152,23 @@ class HIMOnPolicyRunner:
                 if it % self.save_interval == 0:
                     self.save(
                         os.path.join(self.log_dir, 'model_{}.pt'.format(it)),
-                        iteration=next_iteration
+                        iteration=next_iteration,
+                        save_command_curriculum=False,
                     )
                 ep_infos.clear()
         except KeyboardInterrupt:
             self.current_learning_iteration = next_iteration
             if self.log_dir is not None:
                 interrupt_path = os.path.join(self.log_dir, 'interrupt_model_{}.pt'.format(max(next_iteration - 1, 0)))
-                self.save(interrupt_path, iteration=next_iteration)
+                self.save(interrupt_path, iteration=next_iteration, save_command_curriculum=True)
                 print(f"Saved interrupt checkpoint to: {interrupt_path}")
             raise
 
         self.current_learning_iteration = next_iteration
         self.save(
             os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)),
-            iteration=self.current_learning_iteration
+            iteration=self.current_learning_iteration,
+            save_command_curriculum=True,
         )
 
     def log(self, locs, width=80, pad=35):
@@ -256,7 +259,7 @@ class HIMOnPolicyRunner:
                                locs['num_learning_iterations'] - locs['it']):.1f}s\n""")
         print(log_string)
 
-    def save(self, path, infos=None, iteration=None):
+    def save(self, path, infos=None, iteration=None, save_command_curriculum=True):
         if iteration is None:
             iteration = self.current_learning_iteration
         torch.save({
@@ -266,6 +269,50 @@ class HIMOnPolicyRunner:
             'iter': iteration,
             'infos': infos,
             }, path)
+        if save_command_curriculum:
+            self._save_command_curriculum_state(path, iteration)
+
+    def _command_curriculum_state_path(self, model_path):
+        directory = os.path.dirname(model_path)
+        filename = os.path.basename(model_path)
+        stem, ext = os.path.splitext(filename)
+        if ext == '.pt' and stem.startswith('model_'):
+            state_filename = 'command_curriculum_' + stem[len('model_'):] + '.json'
+        elif ext == '.pt' and stem.startswith('interrupt_model_'):
+            state_filename = 'interrupt_command_curriculum_' + stem[len('interrupt_model_'):] + '.json'
+        else:
+            state_filename = stem + '_command_curriculum.json'
+        return os.path.join(directory, state_filename)
+
+    def _save_command_curriculum_state(self, model_path, iteration):
+        if not hasattr(self.env, 'get_command_curriculum_state'):
+            return
+        state = self.env.get_command_curriculum_state()
+        if state is None:
+            return
+        state['iteration'] = iteration
+        state_path = self._command_curriculum_state_path(model_path)
+        with open(state_path, 'w') as f:
+            json.dump(state, f, indent=2, sort_keys=True)
+
+    def _load_command_curriculum_state(self, model_path):
+        mode = self.cfg.get('resume_command_curriculum', 'range')
+        if mode in (None, False, 'none'):
+            return
+        if mode not in ('range', 'full'):
+            raise ValueError(f"Unknown resume_command_curriculum mode: {mode}")
+        if not hasattr(self.env, 'load_command_curriculum_state'):
+            return
+
+        state_path = self._command_curriculum_state_path(model_path)
+        if not os.path.exists(state_path):
+            print(f"Command curriculum state not found, starting from config ranges: {state_path}")
+            return
+
+        with open(state_path, 'r') as f:
+            state = json.load(f)
+        self.env.load_command_curriculum_state(state, mode=mode)
+        print(f"Loaded command curriculum state ({mode}) from: {state_path}")
 
     def load(self, path, load_optimizer=True):
         loaded_dict = torch.load(path)
@@ -280,6 +327,7 @@ class HIMOnPolicyRunner:
                 self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
                 self.alg.actor_critic.estimator.optimizer.load_state_dict(loaded_dict['estimator_optimizer_state_dict'])
         self.current_learning_iteration = loaded_dict['iter']
+        self._load_command_curriculum_state(path)
         return loaded_dict['infos']
 
     def get_inference_policy(self, device=None):

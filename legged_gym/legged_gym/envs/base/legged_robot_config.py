@@ -280,3 +280,5 @@ class LeggedRobotCfgPPO(BaseConfig):
         load_run = -1 # -1 = last run
         checkpoint = -1 # -1 = last saved model
         resume_path = None # updated from load_run and chkpt
+        # none: start curriculum from config; range: restore command ranges only; full: also restore EMA/pass streak.
+        resume_command_curriculum = 'range'

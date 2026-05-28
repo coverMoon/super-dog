@@ -34,6 +34,7 @@ class BlackWEnv(BlackEnv):
         self.last_cmd_curr_high_count = 0
         self.last_cmd_curr_eval_count = 0
         self.last_cmd_curr_progressed = 0.0
+        self.last_cmd_curr_score = 0.0
         self.last_cmd_curr_threshold_ratio = float(getattr(self.cfg.commands, "curriculum_threshold", 0.8))
 
         for axis in ("y", "yaw"):
@@ -46,6 +47,7 @@ class BlackWEnv(BlackEnv):
             setattr(self, f"last_cmd_curr_{axis}_high_count", 0)
             setattr(self, f"last_cmd_curr_{axis}_sample_count", 0)
             setattr(self, f"last_cmd_curr_{axis}_progressed", 0.0)
+            setattr(self, f"last_cmd_curr_{axis}_score", 0.0)
             setattr(self, f"last_cmd_curr_{axis}_threshold_ratio", float("nan"))
 
     def _init_blackW_dof_indices(self):
@@ -265,6 +267,7 @@ class BlackWEnv(BlackEnv):
     def _update_axis_command_curriculum(self, axis_name, command_name, threshold, step, target_abs, min_abs, split_fraction):
         self._set_axis_curriculum_attr(axis_name, "progressed", 0.0)
         self._set_axis_curriculum_attr(axis_name, "threshold_ratio", float(threshold))
+        self._set_axis_curriculum_attr(axis_name, "score", self._axis_curriculum_score(axis_name, threshold))
 
         cmd_buffer, ratio_buffer = self._axis_curriculum_buffers(axis_name)
         buffer_min = max(1, int(getattr(self.cfg.commands, "curriculum_buffer_min", 256)))
@@ -304,6 +307,7 @@ class BlackWEnv(BlackEnv):
         ema_high = (1.0 - ema_alpha) * self._get_axis_curriculum_attr(axis_name, "ema_high") + ema_alpha * high_ratio.item()
         self._set_axis_curriculum_attr(axis_name, "ema_low", ema_low)
         self._set_axis_curriculum_attr(axis_name, "ema_high", ema_high)
+        self._set_axis_curriculum_attr(axis_name, "score", self._axis_curriculum_score(axis_name, threshold))
 
         high_threshold = max(0.0, threshold - 0.1)
         if ema_low > threshold and ema_high > high_threshold:
@@ -321,6 +325,105 @@ class BlackWEnv(BlackEnv):
 
         cmd_buffer.clear()
         ratio_buffer.clear()
+
+    def _axis_curriculum_score(self, axis_name, threshold):
+        high_threshold = max(0.0, threshold - 0.1)
+        if threshold <= 0.0 or high_threshold <= 0.0:
+            return float("nan")
+        ema_low = self._get_axis_curriculum_attr(axis_name, "ema_low")
+        ema_high = self._get_axis_curriculum_attr(axis_name, "ema_high")
+        return min(ema_low / threshold, ema_high / high_threshold)
+
+    def get_command_curriculum_state(self):
+        return {
+            "version": 1,
+            "command_ranges": {
+                "lin_vel_x": list(self.command_ranges["lin_vel_x"]),
+                "lin_vel_y": list(self.command_ranges["lin_vel_y"]),
+                "ang_vel_yaw": list(self.command_ranges["ang_vel_yaw"]),
+            },
+            "ema": {
+                "x_low": self.cmd_curr_ema_low,
+                "x_high": self.cmd_curr_ema_high,
+                "y_low": self.cmd_curr_y_ema_low,
+                "y_high": self.cmd_curr_y_ema_high,
+                "yaw_low": self.cmd_curr_yaw_ema_low,
+                "yaw_high": self.cmd_curr_yaw_ema_high,
+            },
+            "pass_streak": {
+                "x": self.cmd_curr_pass_streak,
+                "y": self.cmd_curr_y_pass_streak,
+                "yaw": self.cmd_curr_yaw_pass_streak,
+            },
+        }
+
+    def load_command_curriculum_state(self, state, mode="range"):
+        if mode not in ("range", "full"):
+            raise ValueError(f"Unknown command curriculum resume mode: {mode}")
+
+        ranges = state.get("command_ranges", {})
+        for command_name in ("lin_vel_x", "lin_vel_y", "ang_vel_yaw"):
+            if command_name in ranges:
+                low, high = ranges[command_name]
+                self.command_ranges[command_name][0] = float(low)
+                self.command_ranges[command_name][1] = float(high)
+
+        self._reset_command_curriculum_statistics()
+        if mode == "full":
+            ema = state.get("ema", {})
+            self.cmd_curr_ema_low = float(ema.get("x_low", self.cmd_curr_ema_low))
+            self.cmd_curr_ema_high = float(ema.get("x_high", self.cmd_curr_ema_high))
+            self.cmd_curr_y_ema_low = float(ema.get("y_low", self.cmd_curr_y_ema_low))
+            self.cmd_curr_y_ema_high = float(ema.get("y_high", self.cmd_curr_y_ema_high))
+            self.cmd_curr_yaw_ema_low = float(ema.get("yaw_low", self.cmd_curr_yaw_ema_low))
+            self.cmd_curr_yaw_ema_high = float(ema.get("yaw_high", self.cmd_curr_yaw_ema_high))
+
+            pass_streak = state.get("pass_streak", {})
+            self.cmd_curr_pass_streak = int(pass_streak.get("x", self.cmd_curr_pass_streak))
+            self.cmd_curr_y_pass_streak = int(pass_streak.get("y", self.cmd_curr_y_pass_streak))
+            self.cmd_curr_yaw_pass_streak = int(pass_streak.get("yaw", self.cmd_curr_yaw_pass_streak))
+            self._refresh_command_curriculum_scores()
+
+        self._resample_commands(torch.arange(self.num_envs, device=self.device))
+
+    def _refresh_command_curriculum_scores(self):
+        self.last_cmd_curr_score = self._axis_curriculum_score(
+            "x", getattr(self.cfg.commands, "curriculum_threshold", 0.7)
+        )
+        self.last_cmd_curr_y_score = self._axis_curriculum_score(
+            "y", getattr(self.cfg.commands, "y_curriculum_threshold", 0.45)
+        )
+        self.last_cmd_curr_yaw_score = self._axis_curriculum_score(
+            "yaw", getattr(self.cfg.commands, "yaw_curriculum_threshold", 0.4)
+        )
+
+    def _reset_command_curriculum_statistics(self):
+        self.cmd_curr_ema_low = 0.0
+        self.cmd_curr_ema_high = 0.0
+        self.cmd_curr_pass_streak = 0
+        self.cmd_curr_buffer_cmd_x.clear()
+        self.cmd_curr_buffer_ratio.clear()
+        if hasattr(self, "cmd_curr_segment_len"):
+            self.cmd_curr_segment_len.zero_()
+            for segment_sum in self.cmd_curr_segment_sums.values():
+                segment_sum.zero_()
+        self.last_cmd_curr_low_count = 0
+        self.last_cmd_curr_high_count = 0
+        self.last_cmd_curr_eval_count = 0
+        self.last_cmd_curr_progressed = 0.0
+        self.last_cmd_curr_score = 0.0
+
+        for axis in ("y", "yaw"):
+            setattr(self, f"cmd_curr_{axis}_ema_low", 0.0)
+            setattr(self, f"cmd_curr_{axis}_ema_high", 0.0)
+            setattr(self, f"cmd_curr_{axis}_pass_streak", 0)
+            getattr(self, f"cmd_curr_{axis}_buffer_cmd").clear()
+            getattr(self, f"cmd_curr_{axis}_buffer_ratio").clear()
+            setattr(self, f"last_cmd_curr_{axis}_low_count", 0)
+            setattr(self, f"last_cmd_curr_{axis}_high_count", 0)
+            setattr(self, f"last_cmd_curr_{axis}_sample_count", 0)
+            setattr(self, f"last_cmd_curr_{axis}_progressed", 0.0)
+            setattr(self, f"last_cmd_curr_{axis}_score", 0.0)
 
     def _axis_curriculum_buffers(self, axis_name):
         if axis_name == "x":
@@ -347,11 +450,12 @@ class BlackWEnv(BlackEnv):
                 "high_count": "last_cmd_curr_high_count",
                 "sample_count": "last_cmd_curr_eval_count",
                 "progressed": "last_cmd_curr_progressed",
+                "score": "last_cmd_curr_score",
                 "threshold_ratio": "last_cmd_curr_threshold_ratio",
             }
             setattr(self, mapping[name], value)
             return
-        setattr(self, f"last_cmd_curr_{axis_name}_{name}" if name in ("low_count", "high_count", "sample_count", "progressed", "threshold_ratio") else f"cmd_curr_{axis_name}_{name}", value)
+        setattr(self, f"last_cmd_curr_{axis_name}_{name}" if name in ("low_count", "high_count", "sample_count", "progressed", "score", "threshold_ratio") else f"cmd_curr_{axis_name}_{name}", value)
 
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign

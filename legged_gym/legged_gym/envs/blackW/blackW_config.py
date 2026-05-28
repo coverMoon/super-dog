@@ -86,9 +86,9 @@ class BlackWCfg(BlackCfg):
         curriculum = True
         max_curriculum = 2.0
         curriculum_threshold = 0.6
-        curriculum_ema_alpha = 0.5
+        curriculum_ema_alpha = 0.7
         curriculum_required_passes = 2
-        curriculum_buffer_min = 128
+        curriculum_buffer_min = 100
         max_curriculum_y = 1.0
         max_curriculum_yaw = 3.14
         y_curriculum_threshold = 0.45
@@ -100,11 +100,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.1
-        x_command_prob = 0.3
-        y_command_prob = 0.3
-        yaw_command_prob = 0.3
-        mixed_command_prob = 0.0
+        stand_command_prob = 0.2
+        x_command_prob = 0.0
+        y_command_prob = 0.2
+        yaw_command_prob = 0.0
+        mixed_command_prob = 0.6
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -290,23 +290,23 @@ class BlackWCfg(BlackCfg):
             wheel_vel_ref_tracking = 2.0
 
             # Active posture/contact penalties
-            termination = -500.0
+            termination = -1000.0
             orientation = -5.0
             base_height = -5.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             inactive_axis_vel = -0.5
             collision = -0.1
-            stand_still = -5.0
-            stand_still_wheels = -3.0
+            stand_still = -2.0
+            stand_still_wheels = -1.0
             hip_pos = -3.0
             all_joint_pos = -0.5
             foothold = -1.0
-            foot_clearance = -3.0
+            foot_clearance = -5.0
             feet_air_time = 0.8
             foot_impact_vel = -5.0
             trot = 2.0
-            raibert = 2.0
+            raibert = 1.0
 
             # Active smoothness/limit penalties
             action_rate = -0.05
