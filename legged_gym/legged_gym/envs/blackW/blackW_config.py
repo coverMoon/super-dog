@@ -57,7 +57,7 @@ class BlackWCfg(BlackCfg):
         wheel_radius = 0.103
         # Half of left-right wheel track [m]. Used in _target_wheel_velocities()
         # for yaw differential speed.
-        wheel_base_half_width = 0.183
+        wheel_base_half_width = 0.20975
         # Sign used to map positive command x to positive rolling direction.
         # Use leg-name keys so deployment/training stay correct even if Isaac Gym
         # reorders the runtime DOF sequence.
@@ -100,11 +100,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.2
+        stand_command_prob = 0.1
         x_command_prob = 0.0
-        y_command_prob = 0.2
+        y_command_prob = 0.0
         yaw_command_prob = 0.0
-        mixed_command_prob = 0.6
+        mixed_command_prob = 0.9
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -172,7 +172,7 @@ class BlackWCfg(BlackCfg):
             height_measurements = 0.1
 
     class terrain(BlackCfg.terrain):
-        mesh_type = 'plane'  # options: 'plane', 'heightfield', 'trimesh'
+        mesh_type = 'trimesh'  # options: 'plane', 'heightfield', 'trimesh'
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 25  # [m]
@@ -212,6 +212,9 @@ class BlackWCfg(BlackCfg):
         inactive_ang_vel_weight = 0.25
         wheel_tracking_relative_sigma = 0.25
         wheel_tracking_min_ref = 0.5
+        yaw_lin_cmd_threshold = 0.1
+        yaw_wheel_tracking_scale = 0.2
+        yaw_hip_deviation_margin = 0.1
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
@@ -219,7 +222,7 @@ class BlackWCfg(BlackCfg):
         only_positive_rewards = False
 
         class terrain_adaptive(BlackCfg.rewards.terrain_adaptive):
-            enabled = False
+            enabled = True
             terrain_variability_clip = 0.30
 
             class orientation(BlackCfg.rewards.terrain_adaptive.orientation):
@@ -290,8 +293,8 @@ class BlackWCfg(BlackCfg):
             wheel_vel_ref_tracking = 2.0
 
             # Active posture/contact penalties
-            termination = -1000.0
-            orientation = -5.0
+            termination = -300.0
+            orientation = -3.0
             base_height = -5.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
@@ -300,8 +303,9 @@ class BlackWCfg(BlackCfg):
             stand_still = -2.0
             stand_still_wheels = -1.0
             hip_pos = -3.0
+            yaw_contact_hip_deviation = -10.0
             all_joint_pos = -0.5
-            foothold = -1.0
+            foothold = -5.0
             foot_clearance = -5.0
             feet_air_time = 0.8
             foot_impact_vel = -5.0
@@ -418,12 +422,12 @@ class BlackWCfgPPO(BlackCfgPPO):
             1.0, 1.0, 1.0, 0.0,
         ]
         frame_stack = 6
-        sym_coef = 1.0
+        sym_coef = 0.6
 
     class runner(BlackCfgPPO.runner):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 500
+        max_iterations = 5000
         # none: start curriculum from config; range: restore command ranges only; full: also restore EMA/pass streak.
         resume_command_curriculum = 'range'

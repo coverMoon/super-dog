@@ -68,6 +68,13 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
+        hip_index_by_leg = {name.split("_")[0]: self.dof_names.index(name) for name in hip_names}
+        self.hip_indices_by_foot = torch.tensor(
+            [hip_index_by_leg[name.split("_")[0]] for name in self.feet_names],
+            dtype=torch.long,
+            device=self.device,
+            requires_grad=False,
+        )
         wheel_index_set = set(self.wheel_indices.detach().cpu().tolist())
         self.leg_dof_indices = torch.tensor(
             [i for i in range(self.num_dofs) if i not in wheel_index_set],
@@ -547,6 +554,13 @@ class BlackWEnv(BlackEnv):
             | (torch.abs(self.commands[:, 2]) > 0.1)
         )
 
+    def _yaw_activity(self):
+        yaw_activity = self._command_activity(self.commands[:, 2])
+        lin_cmd_norm = torch.norm(self.commands[:, :2], dim=1)
+        lin_threshold = max(getattr(self.cfg.rewards, "yaw_lin_cmd_threshold", 0.1), 1e-6)
+        lin_quiet = torch.clamp((lin_threshold - lin_cmd_norm) / lin_threshold, min=0.0, max=1.0)
+        return yaw_activity * lin_quiet
+
     def _command_activity(self, command):
         deadzone = getattr(self.cfg.rewards, "command_activity_deadzone", 0.05)
         full = getattr(self.cfg.rewards, "command_activity_full", 0.2)
@@ -666,6 +680,22 @@ class BlackWEnv(BlackEnv):
         scale = torch.where(is_straight_command, 1.0, 0.2)
         return scale * penalty
 
+    def _reward_yaw_contact_hip_deviation(self):
+        yaw = self._yaw_activity()
+        if not torch.any(yaw > 0.0).item():
+            return torch.zeros(self.num_envs, device=self.device)
+
+        hip_error = torch.abs(
+            self.dof_pos[:, self.hip_indices_by_foot]
+            - self.default_dof_pos[:, self.hip_indices_by_foot]
+        )
+        margin = getattr(self.cfg.rewards, "yaw_hip_deviation_margin", 0.18)
+        excess = torch.relu(hip_error - margin)
+
+        contact_force_z = self.contact_forces[:, self.feet_indices, 2]
+        contact_prob = torch.sigmoid((contact_force_z - 5.0) * 0.5)
+        return yaw * torch.sum(torch.abs(excess) * contact_prob, dim=1)
+
     def _reward_all_joint_pos(self):
         err = self.dof_pos[:, self.leg_dof_indices] - self.default_dof_pos[:, self.leg_dof_indices]
         penalty = torch.sum(torch.square(err), dim=1)
@@ -683,7 +713,10 @@ class BlackWEnv(BlackEnv):
         sigma = max(getattr(self.cfg.rewards, "wheel_tracking_relative_sigma", 0.25), 1e-6)
         tracking = torch.exp(-torch.square(err / ref) / sigma)
         move_cmd = torch.maximum(self._command_activity(self.commands[:, 0]), self._command_activity(self.commands[:, 2]))
-        return tracking * move_cmd
+        yaw = self._yaw_activity()
+        yaw_scale = getattr(self.cfg.rewards, "yaw_wheel_tracking_scale", 0.25)
+        wheel_tracking_scale = 1.0 - yaw * (1.0 - yaw_scale)
+        return tracking * move_cmd * wheel_tracking_scale
 
     def _reward_tracking_lin_vel(self):
         min_ref = getattr(self.cfg.rewards, "relative_tracking_min_lin_cmd", 0.2)
