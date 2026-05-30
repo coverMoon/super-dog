@@ -100,11 +100,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.25
-        x_command_prob = 0.2
-        y_command_prob = 0.35
-        yaw_command_prob = 0.2
-        mixed_command_prob = 0.0
+        stand_command_prob = 0.2
+        x_command_prob = 0.0
+        y_command_prob = 0.2
+        yaw_command_prob = 0.0
+        mixed_command_prob = 0.6
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
