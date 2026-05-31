@@ -18,17 +18,17 @@ class BlackWCfg(BlackCfg):
 
         # 刚度 (P Gain)
         stiffness = {
-            'FL_hip_joint': 45.0, 'RL_hip_joint': 45.0, 'FR_hip_joint': 45.0, 'RR_hip_joint': 45.0,
-            'FL_thigh_joint': 45.0, 'RL_thigh_joint': 45.0, 'FR_thigh_joint': 45.0, 'RR_thigh_joint': 45.0,
-            'FL_calf_joint': 45.0, 'RL_calf_joint': 45.0, 'FR_calf_joint': 45.0, 'RR_calf_joint': 45.0,
+            'FL_hip_joint': 60.0, 'RL_hip_joint': 60.0, 'FR_hip_joint': 60.0, 'RR_hip_joint': 60.0,
+            'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
+            'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
             'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
         }
         # 阻尼 (D Gain)
         damping = {
-            'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
+            'FL_hip_joint': 1.5, 'RL_hip_joint': 1.5, 'FR_hip_joint': 1.5, 'RR_hip_joint': 1.5,
             'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
             'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
-            'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
+            'FL_wheel_joint': 2.0, 'RL_wheel_joint': 2.0, 'FR_wheel_joint': 2.0, 'RR_wheel_joint': 2.0,
         }
 
         # stiffness = {
@@ -100,11 +100,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.1
-        x_command_prob = 0.0
-        y_command_prob = 0.0
-        yaw_command_prob = 0.0
-        mixed_command_prob = 0.9
+        stand_command_prob = 0.2
+        x_command_prob = 0.15
+        y_command_prob = 0.45
+        yaw_command_prob = 0.2
+        mixed_command_prob = 0.0
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -120,7 +120,7 @@ class BlackWCfg(BlackCfg):
         payload_mass_range = [-2.0, 4.0]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.05, 0.05]
+        com_displacement_range = [-0.08, 0.08]
 
         randomize_link_mass = True
         link_mass_range = [0.75, 1.25]
@@ -132,7 +132,7 @@ class BlackWCfg(BlackCfg):
         restitution_range = [0., 1.0]
 
         randomize_motor_strength = True
-        motor_strength_range = [0.8, 1.2]
+        motor_strength_range = [0.7, 1.3]
 
         randomize_kp = True
         kp_range = [0.8, 1.2]
@@ -159,6 +159,24 @@ class BlackWCfg(BlackCfg):
         # 延迟步数范围
         lag_timesteps = 3
 
+        # Wheel-specific sim2real randomization. Wheel motors and distal wheel
+        # assemblies differ from the leg motors, so keep these independent from
+        # the global leg/body randomization above.
+        randomize_wheel_delay = True
+        wheel_lag_timesteps = 6
+
+        randomize_wheel_motor = True
+        wheel_motor_strength_range = [0.6, 1.2]
+        wheel_vel_ref_scale_range = [0.7, 1.2]
+
+        randomize_wheel_mass = True
+        wheel_mass_scale_range = [1.0, 1.8]
+        wheel_inertia_scale_range = [1.0, 2.0]
+
+        randomize_wheel_geometry = True
+        wheel_radius_scale_range = [0.95, 1.05]
+        wheel_base_half_width_scale_range = [0.95, 1.05]
+
     class noise(BlackCfg.noise):
         add_noise = True
         noise_level = 1.0  # scales other values
@@ -172,7 +190,7 @@ class BlackWCfg(BlackCfg):
             height_measurements = 0.1
 
     class terrain(BlackCfg.terrain):
-        mesh_type = 'trimesh'  # options: 'plane', 'heightfield', 'trimesh'
+        mesh_type = 'plane'  # options: 'plane', 'heightfield', 'trimesh'
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 25  # [m]
@@ -197,7 +215,7 @@ class BlackWCfg(BlackCfg):
 
     class rewards(BlackCfg.rewards):
         cycle_time = 0.8    # only for y/yaw
-        clearance_height_target = 0.06  # only for y/yaw
+        clearance_height_target = 0.08  # only for y/yaw
         
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         tracking_ang_vel_sigma = 1.0
@@ -293,8 +311,8 @@ class BlackWCfg(BlackCfg):
             wheel_vel_ref_tracking = 2.0
 
             # Active posture/contact penalties
-            termination = -300.0
-            orientation = -3.0
+            termination = -1000.0
+            orientation = -5.0
             base_height = -5.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
@@ -376,7 +394,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.003
+        entropy_coef = 0.005
         num_learning_epochs = 5
         num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 2.e-4  # 5.e-4
@@ -422,12 +440,12 @@ class BlackWCfgPPO(BlackCfgPPO):
             1.0, 1.0, 1.0, 0.0,
         ]
         frame_stack = 6
-        sym_coef = 0.6
+        sym_coef = 1.0
 
     class runner(BlackCfgPPO.runner):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 5000
+        max_iterations = 500
         # none: start curriculum from config; range: restore command ranges only; full: also restore EMA/pass streak.
         resume_command_curriculum = 'range'

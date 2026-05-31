@@ -1,4 +1,7 @@
+import numpy as np
 import torch
+from isaacgym import gymtorch
+from isaacgym.torch_utils import torch_rand_float
 
 from legged_gym.envs.black.black_env import BlackEnv
 
@@ -15,6 +18,7 @@ class BlackWEnv(BlackEnv):
     def _init_buffers(self):
         super()._init_buffers()
         self._init_blackW_dof_indices()
+        self._init_blackW_wheel_domain_rand_buffers()
         self._init_blackW_command_curriculum()
 
     def _init_blackW_command_curriculum(self):
@@ -49,6 +53,122 @@ class BlackWEnv(BlackEnv):
             setattr(self, f"last_cmd_curr_{axis}_progressed", 0.0)
             setattr(self, f"last_cmd_curr_{axis}_score", 0.0)
             setattr(self, f"last_cmd_curr_{axis}_threshold_ratio", float("nan"))
+
+    def _init_blackW_wheel_domain_rand_buffers(self):
+        leg_lag = int(getattr(self.cfg.domain_rand, "lag_timesteps", 0))
+        wheel_lag = int(getattr(self.cfg.domain_rand, "wheel_lag_timesteps", leg_lag))
+        hist_len = max(leg_lag, wheel_lag) + 1
+        if hasattr(self, "action_queue") and self.action_queue.size(1) < hist_len:
+            self.action_queue = torch.zeros(
+                self.num_envs, hist_len, self.num_actions, device=self.device, requires_grad=False
+            )
+
+        self.wheel_lag_buffer = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self.wheel_motor_strength_factors = torch.ones(
+            self.num_envs, len(self.wheel_indices), dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.wheel_vel_ref_scales = torch.ones(
+            self.num_envs, len(self.wheel_indices), dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self.wheel_radius_scale = torch.ones(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.wheel_base_half_width_scale = torch.ones(
+            self.num_envs, dtype=torch.float, device=self.device, requires_grad=False
+        )
+        self._randomize_blackW_wheel_domain(torch.arange(self.num_envs, device=self.device))
+
+    def _randomize_blackW_wheel_domain(self, env_ids):
+        if len(env_ids) == 0:
+            return
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_delay", False):
+            max_lag = int(getattr(self.cfg.domain_rand, "wheel_lag_timesteps", 0))
+            self.wheel_lag_buffer[env_ids] = torch.randint(0, max_lag + 1, (len(env_ids),), device=self.device)
+        else:
+            self.wheel_lag_buffer[env_ids] = self.lag_buffer[env_ids]
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_motor", False):
+            strength_range = getattr(self.cfg.domain_rand, "wheel_motor_strength_range", [1.0, 1.0])
+            vel_scale_range = getattr(self.cfg.domain_rand, "wheel_vel_ref_scale_range", [1.0, 1.0])
+            self.wheel_motor_strength_factors[env_ids] = torch_rand_float(
+                strength_range[0], strength_range[1], (len(env_ids), len(self.wheel_indices)), device=self.device
+            )
+            self.wheel_vel_ref_scales[env_ids] = torch_rand_float(
+                vel_scale_range[0], vel_scale_range[1], (len(env_ids), len(self.wheel_indices)), device=self.device
+            )
+        else:
+            self.wheel_motor_strength_factors[env_ids] = 1.0
+            self.wheel_vel_ref_scales[env_ids] = 1.0
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_geometry", False):
+            radius_range = getattr(self.cfg.domain_rand, "wheel_radius_scale_range", [1.0, 1.0])
+            width_range = getattr(self.cfg.domain_rand, "wheel_base_half_width_scale_range", [1.0, 1.0])
+            self.wheel_radius_scale[env_ids] = torch_rand_float(
+                radius_range[0], radius_range[1], (len(env_ids), 1), device=self.device
+            ).squeeze(1)
+            self.wheel_base_half_width_scale[env_ids] = torch_rand_float(
+                width_range[0], width_range[1], (len(env_ids), 1), device=self.device
+            ).squeeze(1)
+        else:
+            self.wheel_radius_scale[env_ids] = 1.0
+            self.wheel_base_half_width_scale[env_ids] = 1.0
+
+    def _wheel_body_prop_indices(self):
+        body_names = getattr(self, "body_names", [])
+        wheel_keys = getattr(self.cfg.asset, "wheel_name", [])
+        return [i for i, name in enumerate(body_names) if any(key in name for key in wheel_keys)]
+
+    def _process_rigid_body_props(self, props, env_id):
+        props = super()._process_rigid_body_props(props, env_id)
+        if not getattr(self.cfg.domain_rand, "randomize_wheel_mass", False):
+            return props
+
+        mass_range = getattr(self.cfg.domain_rand, "wheel_mass_scale_range", [1.0, 1.0])
+        inertia_range = getattr(self.cfg.domain_rand, "wheel_inertia_scale_range", [1.0, 1.0])
+        for i in self._wheel_body_prop_indices():
+            mass_scale = np.random.uniform(mass_range[0], mass_range[1])
+            inertia_scale = np.random.uniform(inertia_range[0], inertia_range[1])
+            props[i].mass *= mass_scale
+            props[i].inertia.x.x *= inertia_scale
+            props[i].inertia.y.y *= inertia_scale
+            props[i].inertia.z.z *= inertia_scale
+        return props
+
+    def step(self, actions):
+        clip_actions = self.cfg.normalization.clip_actions
+        self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+
+        self.action_queue[:, 1:] = self.action_queue[:, :-1].clone()
+        self.action_queue[:, 0] = self.actions
+
+        if self.cfg.domain_rand.delay:
+            latency_indices = torch.clip(self.lag_buffer, max=self.action_queue.size(1) - 1)
+            delayed_actions = self.action_queue[torch.arange(self.num_envs, device=self.device), latency_indices]
+        else:
+            delayed_actions = self.actions.clone()
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_delay", False):
+            wheel_latency_indices = torch.clip(self.wheel_lag_buffer, max=self.action_queue.size(1) - 1)
+            wheel_delayed_actions = self.action_queue[
+                torch.arange(self.num_envs, device=self.device), wheel_latency_indices
+            ]
+            delayed_actions = delayed_actions.clone()
+            delayed_actions[:, self.wheel_indices] = wheel_delayed_actions[:, self.wheel_indices]
+
+        self.render()
+        for _ in range(self.cfg.control.decimation):
+            self.torques = self._compute_torques(delayed_actions).view(self.torques.shape)
+            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+            self.gym.simulate(self.sim)
+            if self.device == "cpu":
+                self.gym.fetch_results(self.sim, True)
+            self.gym.refresh_dof_state_tensor(self.sim)
+        termination_ids, termination_priveleged_obs = self.post_physics_step()
+
+        clip_obs = self.cfg.normalization.clip_observations
+        self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
+        if self.privileged_obs_buf is not None:
+            self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
+        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, termination_ids, termination_priveleged_obs
 
     def _init_blackW_dof_indices(self):
         wheel_names = []
@@ -187,6 +307,7 @@ class BlackWEnv(BlackEnv):
     def reset_idx(self, env_ids):
         self._finalize_command_curriculum_segments(env_ids)
         super().reset_idx(env_ids)
+        self._randomize_blackW_wheel_domain(env_ids)
 
     def update_command_curriculum(self, env_ids):
         self._update_axis_command_curriculum(
@@ -491,8 +612,10 @@ class BlackWEnv(BlackEnv):
     def _target_wheel_velocities(self):
         lin_x = self.commands[:, 0].unsqueeze(1)
         yaw = self.commands[:, 2].unsqueeze(1)
-        radius = max(self.cfg.control.wheel_radius, 1e-6)
-        half_width = self.cfg.control.wheel_base_half_width
+        radius_scale = getattr(self, "wheel_radius_scale", self.commands.new_ones(self.num_envs)).unsqueeze(1)
+        half_width_scale = getattr(self, "wheel_base_half_width_scale", self.commands.new_ones(self.num_envs)).unsqueeze(1)
+        radius = torch.clamp(radius_scale * self.cfg.control.wheel_radius, min=1e-6)
+        half_width = half_width_scale * self.cfg.control.wheel_base_half_width
         target = (lin_x - yaw * self.wheel_side_sign.unsqueeze(0) * half_width) / radius
         return target * self.wheel_forward_sign.unsqueeze(0)
 
@@ -521,6 +644,10 @@ class BlackWEnv(BlackEnv):
         else:
             raise NameError(f"Unknown controller type: {self.cfg.control.control_type}")
 
+        torques = torques * self.motor_strength_factors
+        if hasattr(self, "wheel_motor_strength_factors"):
+            torques[:, self.wheel_indices] *= self.wheel_motor_strength_factors
+
         friction_torque = 0.35 * torch.tanh(3.0 * self.dof_vel) + 0.1 * self.dof_vel
         torques = torques - friction_torque
         return torch.clip(torques, -self.torque_limits, self.torque_limits)
@@ -530,10 +657,12 @@ class BlackWEnv(BlackEnv):
         wheel_actions = actions[:, self.wheel_indices]
         signed_wheel_actions = wheel_actions * self.wheel_forward_sign.unsqueeze(0)
 
+        vel_ref_scale = getattr(self, "wheel_vel_ref_scales", torch.ones_like(signed_wheel_actions))
         if mode == "learned":
-            return signed_wheel_actions * self.cfg.control.vel_scale
+            return signed_wheel_actions * self.cfg.control.vel_scale * vel_ref_scale
         if mode == "residual":
-            return self._target_wheel_velocities() + signed_wheel_actions * self.cfg.control.wheel_residual_scale
+            residual = signed_wheel_actions * self.cfg.control.wheel_residual_scale * vel_ref_scale
+            return self._target_wheel_velocities() + residual
         raise NameError(f"Unknown wheel control mode: {mode}")
 
     def check_termination(self):
