@@ -517,3 +517,106 @@ relative_tracking_min_yaw_cmd = 0.0
 ```
 
 含义：非零且超过 deadzone 的低速指令会按真实指令幅值做相对误差归一化；零指令轴不进入 tracking/progress 计算，由 `inactive_axis_vel`、stand 相关 reward 等负责约束。
+
+## 15. blackW 主任务切换到 Go2W 简化环境
+
+同日根据新的 URDF 修复背景，先执行迁移第一步：不改动旧复杂环境代码本身，只调整任务注册入口。
+
+变更：
+
+```python
+task_registry.register("blackW", BlackWGo2WRewardEnv, BlackWGo2WRewardCfg(), BlackWGo2WRewardCfgPPO())
+task_registry.register("blackW_legacy", BlackWLegacyEnv, BlackWLegacyCfg(), BlackWLegacyCfgPPO())
+```
+
+含义：
+
+- `--task blackW` 现在使用 `blackW_go2w_config/env` 对应的简化 reward 与约束；
+- 原复杂版 `BlackWCfg/BlackWEnv` 暂时通过 `--task blackW_legacy` 保留；
+- `--task blackW_go2w_reward` 继续保留，兼容之前实验命令。
+
+本步刻意不迁回旧版复杂 reward、分轴 segment curriculum、stand alive、raibert/foothold/trot、wheel-specific randomization 等历史调参内容。原因是当前 URDF 已修复小腿电机力矩限制，主线应先用更简单的 Go2W 风格 reward 重新建立 baseline，再按实际现象逐项加回约束。
+
+后续待处理：
+
+1. 检查并修正 Go2W 简化环境中 stand/run mask 对 yaw command 的处理；
+2. 决定是否把 Go2W 简化环境文件正式改名为 `blackW_config.py` / `blackW_env.py`，或继续采用注册别名方式；
+3. 跑新 `--task blackW` baseline 后，再决定是否引入轻量 wheel 停止约束、y/yaw curriculum 或 foothold 类约束。
+
+
+## 16. blackW / legacy 文件名正式切换
+
+同日继续执行迁移第二步：将 Go2W 简化环境正式改为 `blackW_config.py` 和 `blackW_env.py`，旧复杂版文件改名为 legacy。
+
+文件对应关系：
+
+```text
+blackW_config.py        -> blackW_legacy_config.py
+blackW_env.py           -> blackW_legacy_env.py
+blackW_go2w_config.py   -> blackW_config.py
+blackW_go2w_env.py      -> blackW_env.py
+```
+
+新主文件中类名也切回主线语义：
+
+```python
+class BlackWCfg(BlackWLegacyCfg):
+class BlackWEnv(BlackWLegacyEnv):
+```
+
+为兼容旧实验命令，仍保留别名：
+
+```python
+BlackWGo2WRewardCfg = BlackWCfg
+BlackWGo2WRewardCfgPPO = BlackWCfgPPO
+BlackWGo2WRewardEnv = BlackWEnv
+```
+
+因此当前任务名含义为：
+
+- `--task blackW`：新主线 Go2W 简化环境；
+- `--task blackW_legacy`：旧复杂 blackW 环境；
+- `--task blackW_go2w_reward`：兼容别名，仍指向新主线环境。
+
+语法检查通过：
+
+```bash
+python -m py_compile legged_gym/legged_gym/envs/__init__.py \
+  legged_gym/legged_gym/envs/blackW/blackW_config.py \
+  legged_gym/legged_gym/envs/blackW/blackW_env.py \
+  legged_gym/legged_gym/envs/blackW/blackW_legacy_config.py \
+  legged_gym/legged_gym/envs/blackW/blackW_legacy_env.py
+```
+
+
+## 17. blackW 主线断开 legacy 继承
+
+同日继续整理迁移结构：上一版虽然文件名已经切到 `blackW_config.py` / `blackW_env.py`，但新主线仍然通过 `BlackWLegacyCfg` / `BlackWLegacyEnv` 继承旧复杂环境，语义较绕，也容易把旧调参包袱隐式带回主线。
+
+本次将主线继承关系改为：
+
+```python
+class BlackWCfg(BlackCfg):
+class BlackWEnv(BlackEnv):
+```
+
+同时在新 `blackW_env.py` 中只保留轮足基础必需逻辑：
+
+- wheel / hip / leg DOF index 初始化；
+- wheel forward sign 与左右侧符号；
+- wheel action 到 wheel velocity reference 的映射；
+- 轮子速度控制版本 `_compute_torques()`；
+- wheel 位置误差在 observation 中置零，避免无限转角进入位置观测；
+- 16 维 action / observation 尺寸配置。
+
+旧复杂环境不再参与 `blackW` 主线继承链，只通过注册入口中的 `blackW_legacy` 保留。`blackW_go2w_reward` 仍作为兼容别名指向当前主线。
+
+语法检查通过：
+
+```bash
+python -m py_compile legged_gym/legged_gym/envs/__init__.py \
+  legged_gym/legged_gym/envs/blackW/blackW_config.py \
+  legged_gym/legged_gym/envs/blackW/blackW_env.py \
+  legged_gym/legged_gym/envs/blackW/blackW_legacy_config.py \
+  legged_gym/legged_gym/envs/blackW/blackW_legacy_env.py
+```
