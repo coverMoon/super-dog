@@ -18,9 +18,9 @@ class BlackWCfg(BlackCfg):
 
         # 刚度 (P Gain)
         stiffness = {
-            'FL_hip_joint': 50.0, 'RL_hip_joint': 50.0, 'FR_hip_joint': 50.0, 'RR_hip_joint': 50.0,
-            'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
-            'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
+            'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
+            'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
+            'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
             'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
         }
         # 阻尼 (D Gain)
@@ -28,7 +28,7 @@ class BlackWCfg(BlackCfg):
             'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
             'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
             'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
-            'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
+            'FL_wheel_joint': 2.0, 'RL_wheel_joint': 2.0, 'FR_wheel_joint': 2.0, 'RR_wheel_joint': 2.0,
         }
 
         # stiffness = {
@@ -86,9 +86,9 @@ class BlackWCfg(BlackCfg):
         curriculum = True
         max_curriculum = 2.0
         curriculum_threshold = 0.6
-        curriculum_ema_alpha = 0.7
-        curriculum_required_passes = 2
-        curriculum_buffer_min = 100
+        curriculum_ema_alpha = 0.5
+        curriculum_required_passes = 3
+        curriculum_buffer_min = 150
         max_curriculum_y = 1.0
         max_curriculum_yaw = 3.14
         y_curriculum_threshold = 0.45
@@ -100,11 +100,11 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.15
-        x_command_prob = 0.0
-        y_command_prob = 0.0
-        yaw_command_prob = 0.0
-        mixed_command_prob = 0.85
+        stand_command_prob = 0.25
+        x_command_prob = 0.15
+        y_command_prob = 0.3
+        yaw_command_prob = 0.3
+        mixed_command_prob = 0.0
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
@@ -216,28 +216,27 @@ class BlackWCfg(BlackCfg):
 
     class rewards(BlackCfg.rewards):
         cycle_time = 0.8    # only for y/yaw
-        clearance_height_target = 0.08  # only for y/yaw
+        clearance_height_target = 0.1  # only for y/yaw
         
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         tracking_ang_vel_sigma = 1.0
         command_activity_deadzone = 0.05
         command_activity_full = 0.2
         relative_tracking_sigma = 0.25
-        relative_tracking_min_lin_cmd = 0.2
-        relative_tracking_min_yaw_cmd = 0.3
+        relative_tracking_min_lin_cmd = 0.0
+        relative_tracking_min_yaw_cmd = 0.0
         tracking_reward_weight = 0.6
         progress_reward_weight = 0.4
         inactive_lin_vel_weight = 1.0
         inactive_ang_vel_weight = 0.25
         wheel_tracking_relative_sigma = 0.25
         wheel_tracking_min_ref = 0.5
-        yaw_lin_cmd_threshold = 0.1
-        yaw_wheel_tracking_scale = 0.2
-        yaw_hip_deviation_margin = 0.1
+        yaw_dominance_lin_vel_scale = 1.0
+        yaw_hip_deviation_margin = 0.2
         soft_dof_pos_limit = 0.95  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.85
         soft_torque_limit = 0.80
-        base_height_target = 0.50
+        base_height_target = 0.53
         only_positive_rewards = False
 
         class terrain_adaptive(BlackCfg.rewards.terrain_adaptive):
@@ -289,9 +288,10 @@ class BlackWCfg(BlackCfg):
                 swing_high_penalty_weight = 0.25
 
         class raibert(BlackCfg.rewards.raibert):
-            nominal_front_x = 0.21
-            nominal_rear_x = -0.21
-            nominal_y = 0.155
+            # blackW foothold rewards use the wheel cylinder center rather than the old foot point.
+            nominal_front_x = 0.2055
+            nominal_rear_x = -0.2197
+            nominal_y = 0.1834
             max_linear_offset_x = 0.16
             max_linear_offset_y = 0.06
             vel_error_gain = 0.3
@@ -319,24 +319,24 @@ class BlackWCfg(BlackCfg):
             base_height = -5.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
-            inactive_axis_vel = -0.5
+            inactive_axis_vel = -1.0
             collision = -0.1
             stand_still = -1.5
-            stand_still_wheels = -0.5
+            stand_still_wheels = -0.8
             hip_pos = -3.0
             yaw_contact_hip_deviation = -10.0
             all_joint_pos = -0.5
-            foothold = -5.0
-            foot_clearance = -5.0
+            foothold = -3.0
+            foot_clearance = -8.0
             feet_air_time = 0.8
             foot_impact_vel = -5.0
             trot = 2.0
             raibert = 1.0
 
             # Active smoothness/limit penalties
-            action_rate = -0.1
+            action_rate = -0.05
             smoothness = -0.02
-            wheel_action_rate = -0.1
+            wheel_action_rate = -0.05
             wheel_smoothness = -0.02
             torques = -1e-7
             dof_vel = -1e-7
@@ -448,6 +448,6 @@ class BlackWCfgPPO(BlackCfgPPO):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 1000
+        max_iterations = 500
         # none: start curriculum from config; range: restore command ranges only; full: also restore EMA/pass streak.
         resume_command_curriculum = 'range'

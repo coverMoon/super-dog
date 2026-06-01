@@ -321,3 +321,199 @@ wheel_lag_timesteps = 4
 ```python
 stand_alive = 2.0 ~ 4.0
 ```
+
+## 10. yaw 主导门控补充
+
+同日后续排查 `May31_23-04-04_` 时发现，`Episode/rew_yaw_contact_hip_deviation` 全程为 `0.0`。原因是旧 `_yaw_activity()` 要求 yaw 活跃且 xy 线速度指令范数小于 `yaw_lin_cmd_threshold`，相当于只在纯 yaw / 近似纯 yaw 下打开；而当时训练配置以 mixed command 为主，mixed command 又必定带非零 x/y，所以该 reward 被门控为 0。
+
+本次将 `_yaw_activity()` 从纯 yaw 门控：
+
+```text
+yaw_activity * lin_quiet
+```
+
+改为 yaw 分量 / yaw 主导门控：
+
+```text
+yaw_activity * abs(yaw_cmd) / (abs(yaw_cmd) + yaw_dominance_lin_vel_scale * norm(cmd_xy))
+```
+
+新增配置：
+
+```python
+yaw_dominance_lin_vel_scale = 1.0
+```
+
+含义：只要 yaw 指令超过 deadzone，该项就可能非零；yaw 相对 xy 越主导，权重越接近 1；xy 线速度越大且 yaw 越小，权重越弱；纯 yaw 时仍接近满权重。
+
+影响范围：`_yaw_activity()` 当时同时影响 `yaw_contact_hip_deviation` 和 `wheel_vel_ref_tracking` 中的 yaw 下轮速追踪衰减。因此 mixed yaw 场景中髋关节接触变形惩罚会开始生效，同时轮速 tracking 衰减也会按 yaw 主导程度部分生效。
+
+观察重点：
+
+- `Episode/rew_yaw_contact_hip_deviation` 是否从 0 变为负值；
+- `Episode/rew_wheel_vel_ref_tracking` 是否明显下降；
+- `Episode/rew_tracking_ang_vel` 是否保持；
+- play 中 mixed yaw / 大 yaw 指令下髋关节外展内收变形是否减轻。
+
+如果 mixed yaw 下轮速 tracking 下降明显，应减弱 mixed 中的 yaw 作用：
+
+```python
+yaw_dominance_lin_vel_scale = 1.5 ~ 2.0
+```
+
+如果希望 yaw hip penalty 更积极介入 mixed yaw，可降低该值：
+
+```python
+yaw_dominance_lin_vel_scale = 0.5
+```
+
+## 11. yaw 去差速轮速先验补充
+
+同日后续训练 `Jun01_10-48-56_` 500 轮后观察到：
+
+```text
+1. 零指令时仍会缓慢前滚，轮子无法完全停下，后半身轻微下坠；
+2. yaw 指令下旋转不协调，前后轮有时会撞在一起。
+```
+
+其中 yaw 问题的核心判断是：`blackW` 的四个轮子是长方形布局的非转向轮，纯 yaw 下如果继续使用差速小车式轮速先验，会鼓励四轮贴地硬拧，容易产生侧向约束冲突、髋关节变形和前后轮互相靠近/碰撞。
+
+本次让 `_target_wheel_velocities()` 支持是否包含 yaw：
+
+```python
+def _target_wheel_velocities(self, include_yaw=True):
+```
+
+默认仍保留原行为，避免影响 residual wheel control 等其它调用路径。
+
+`_reward_wheel_vel_ref_tracking()` 改为使用不含 yaw 的 wheel target：
+
+```python
+target = self._target_wheel_velocities(include_yaw=False)
+move_cmd = self._command_activity(self.commands[:, 0])
+return tracking * move_cmd
+```
+
+含义：
+
+- wheel velocity tracking 只服务 x 方向滚动；
+- 纯 yaw 指令下不再奖励差速轮速；
+- yaw 旋转需要通过 `tracking_ang_vel`、`raibert`、`trot`、`foot_clearance`、`feet_air_time` 等步态相关项来完成。
+
+同时删除已无代码引用的：
+
+```python
+yaw_wheel_tracking_scale = 0.2
+```
+
+后续观察重点：
+
+- `Episode/rew_wheel_vel_ref_tracking`：纯 yaw 占比高时应下降，因为 yaw 不再贡献该奖励；
+- `Episode/rew_tracking_ang_vel`：短期可能下降，表示策略需要重新学习用步态转向；
+- `Episode/rew_foot_clearance`、`Episode/rew_feet_air_time`、`Episode/rew_trot`、`Episode/rew_raibert`：观察是否开始接管 yaw；
+- `Episode/rew_yaw_contact_hip_deviation`：如果仍明显变差，说明还需要更直接的足端/轮距约束；
+- play 中纯 yaw 时是否减少四轮贴地硬拧和前后轮碰撞。
+
+若 yaw tracking 掉得明显但姿态更自然，可以继续强化步态侧：提高 yaw 下 foot_clearance / feet_air_time / trot / raibert 的作用，降低 yaw curriculum 速度或 max yaw，或增加同侧前后轮最小距离、leg crossing、yaw foothold 等几何约束。
+
+若 yaw tracking 掉得明显且姿态也没有改善，说明还需要实施第二步：把 y/yaw 统一成 lateral-yaw gait mode，而不是只切 wheel prior。
+
+## 12. Raibert / foothold 名义落足点轮子几何补偿
+
+同日继续检查 `raibert` 与 `foothold` 这类依赖名义落足点的 reward。`blackW` 加轮子后，`foot_name = "foot"` 实际匹配的是 `FL_foot/FR_foot/RL_foot/RR_foot` 这些轮子 link；而原先名义落足点仍沿用普通足端：
+
+```python
+nominal_front_x = 0.21
+nominal_rear_x = -0.21
+nominal_y = 0.155
+```
+
+根据 URDF 默认关节角估算，轮子圆柱中心默认 XY 近似为：
+
+```text
+FL: ( 0.2055,  0.1834)
+FR: ( 0.2055, -0.1834)
+RL: (-0.2197,  0.1834)
+RR: (-0.2197, -0.1834)
+```
+
+因此本次先采用硬编码方式，将 `BlackWCfg.rewards.raibert` 中的名义落足点改为轮子几何中心近似值：
+
+```python
+nominal_front_x = 0.2055
+nominal_rear_x = -0.2197
+nominal_y = 0.1834
+```
+
+影响范围：
+
+- `_reward_foothold()` 的 nominal reference 外移到轮子中心；
+- `_reward_raibert()` 的 lateral/yaw target 也围绕轮子中心生成；
+- yaw 时 `yaw_basis = (-nominal_y, nominal_x)` 会使用更宽的轮距，和真实轮子接触几何更一致。
+
+风险：这只是先把数值补对的硬编码方案，并没有显式区分 link origin、COM、collision center 或轮子接触点。如果后续仍发现 yaw 下前后轮靠近、脚端几何不稳定，可以再把 wheel foothold point 单独算成 `foot_pos + local_offset`，而不是只改 nominal。
+
+
+## 13. tracking min_ref 除零 NaN 修复
+
+同日训练时报错：actor 输出 `Normal(loc=...)` 中 `loc` 全部为 NaN。排查当前 diff 后发现：
+
+```python
+relative_tracking_min_lin_cmd = 0.0
+relative_tracking_min_yaw_cmd = 0.0
+```
+
+而 `_axis_tracking_progress_reward()` 中有：
+
+```python
+ref = torch.clamp(torch.abs(command), min=min_ref)
+rel_error = (command - actual) / ref
+progress = torch.clamp(signed_progress / ref, min=0.0, max=1.0)
+```
+
+当某个轴 command 为 0 且 `min_ref = 0` 时，`ref = 0`，会产生除零 NaN/Inf。即使 command activity 为 0，后续 `0 * NaN` 仍会得到 NaN，最终污染 reward/advantage 并把 actor 网络更新成 NaN。
+
+本次修复：
+
+```python
+relative_tracking_min_lin_cmd = 0.2
+relative_tracking_min_yaw_cmd = 0.3
+```
+
+并在代码里加防御性下限：
+
+```python
+ref = torch.clamp(torch.abs(command), min=max(min_ref, 1e-6))
+```
+
+结论：这个 NaN 与“静止时约 0.2m/s 前滑”不是同一个问题。训练采样逻辑里 stand command 会先清零，`min_nonzero_lin_cmd = 0.2` 只会用于 x/y/yaw/mixed 非零指令，不会覆盖 stand command。
+
+## 14. tracking reward inactive 轴跳过除法
+
+同日进一步调整 tracking reward：希望 `relative_tracking_min_lin_cmd` 和 `relative_tracking_min_yaw_cmd` 可以设为 `0.0` 或尽量接近 0，不再用 `0.2/0.3` 作为低速指令的最小归一化参考。
+
+为避免零指令轴除零，`_axis_tracking_progress_reward()` 改为先根据 command activity 过滤：
+
+```python
+activity = self._command_activity(command)
+active = activity > 0.0
+if not torch.any(active).item():
+    return torch.zeros_like(command)
+```
+
+后续 `ref`、`rel_error`、`progress` 只在 `active` 样本上计算：
+
+```python
+ref = torch.clamp(torch.abs(command[active]), min=max(min_ref, 1e-6))
+```
+
+这样 activity 为 0 的环境直接返回 0，不再参与除法，也不会出现 `0 * NaN`。
+
+配置改为：
+
+```python
+relative_tracking_min_lin_cmd = 0.0
+relative_tracking_min_yaw_cmd = 0.0
+```
+
+含义：非零且超过 deadzone 的低速指令会按真实指令幅值做相对误差归一化；零指令轴不进入 tracking/progress 计算，由 `inactive_axis_vel`、stand 相关 reward 等负责约束。

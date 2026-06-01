@@ -618,9 +618,9 @@ class BlackWEnv(BlackEnv):
             )
         return [float(sign) for sign in cfg_sign]
     
-    def _target_wheel_velocities(self):
+    def _target_wheel_velocities(self, include_yaw=True):
         lin_x = self.commands[:, 0].unsqueeze(1)
-        yaw = self.commands[:, 2].unsqueeze(1)
+        yaw = self.commands[:, 2].unsqueeze(1) if include_yaw else torch.zeros_like(lin_x)
         radius_scale = getattr(self, "wheel_radius_scale", self.commands.new_ones(self.num_envs)).unsqueeze(1)
         half_width_scale = getattr(self, "wheel_base_half_width_scale", self.commands.new_ones(self.num_envs)).unsqueeze(1)
         radius = torch.clamp(radius_scale * self.cfg.control.wheel_radius, min=1e-6)
@@ -695,9 +695,10 @@ class BlackWEnv(BlackEnv):
     def _yaw_activity(self):
         yaw_activity = self._command_activity(self.commands[:, 2])
         lin_cmd_norm = torch.norm(self.commands[:, :2], dim=1)
-        lin_threshold = max(getattr(self.cfg.rewards, "yaw_lin_cmd_threshold", 0.1), 1e-6)
-        lin_quiet = torch.clamp((lin_threshold - lin_cmd_norm) / lin_threshold, min=0.0, max=1.0)
-        return yaw_activity * lin_quiet
+        lin_scale = max(getattr(self.cfg.rewards, "yaw_dominance_lin_vel_scale", 1.0), 1e-6)
+        yaw_abs = torch.abs(self.commands[:, 2])
+        yaw_dominance = yaw_abs / (yaw_abs + lin_scale * lin_cmd_norm + 1e-6)
+        return yaw_activity * yaw_dominance
 
     def _command_activity(self, command):
         deadzone = getattr(self.cfg.rewards, "command_activity_deadzone", 0.05)
@@ -707,17 +708,23 @@ class BlackWEnv(BlackEnv):
 
     def _axis_tracking_progress_reward(self, command, actual, min_ref):
         activity = self._command_activity(command)
-        ref = torch.clamp(torch.abs(command), min=min_ref)
-        rel_error = (command - actual) / ref
+        active = activity > 0.0
+        if not torch.any(active).item():
+            return torch.zeros_like(command)
+
+        reward = torch.zeros_like(command)
+        ref = torch.clamp(torch.abs(command[active]), min=max(min_ref, 1e-6))
+        rel_error = (command[active] - actual[active]) / ref
         tracking_sigma = max(getattr(self.cfg.rewards, "relative_tracking_sigma", 0.25), 1e-6)
         tracking = torch.exp(-torch.square(rel_error) / tracking_sigma)
 
-        signed_progress = torch.sign(command) * actual
+        signed_progress = torch.sign(command[active]) * actual[active]
         progress = torch.clamp(signed_progress / ref, min=0.0, max=1.0)
 
         tracking_weight = getattr(self.cfg.rewards, "tracking_reward_weight", 0.6)
         progress_weight = getattr(self.cfg.rewards, "progress_reward_weight", 0.4)
-        return activity * (tracking_weight * tracking + progress_weight * progress)
+        reward[active] = activity[active] * (tracking_weight * tracking + progress_weight * progress)
+        return reward
 
     def _get_wheel_bottom_heights(self):
         # blackW's "foot" links are wheel bodies, so feet_pos is the wheel-center
@@ -842,7 +849,7 @@ class BlackWEnv(BlackEnv):
 
     def _reward_wheel_vel_ref_tracking(self):
         wheel_vel = self.dof_vel[:, self.wheel_indices]
-        target = self._target_wheel_velocities()
+        target = self._target_wheel_velocities(include_yaw=False)
         err = torch.sqrt(torch.mean(torch.square(wheel_vel - target), dim=1))
         ref = torch.clamp(
             torch.mean(torch.abs(target), dim=1),
@@ -850,11 +857,8 @@ class BlackWEnv(BlackEnv):
         )
         sigma = max(getattr(self.cfg.rewards, "wheel_tracking_relative_sigma", 0.25), 1e-6)
         tracking = torch.exp(-torch.square(err / ref) / sigma)
-        move_cmd = torch.maximum(self._command_activity(self.commands[:, 0]), self._command_activity(self.commands[:, 2]))
-        yaw = self._yaw_activity()
-        yaw_scale = getattr(self.cfg.rewards, "yaw_wheel_tracking_scale", 0.25)
-        wheel_tracking_scale = 1.0 - yaw * (1.0 - yaw_scale)
-        return tracking * move_cmd * wheel_tracking_scale
+        move_cmd = self._command_activity(self.commands[:, 0])
+        return tracking * move_cmd
 
     def _reward_tracking_lin_vel(self):
         min_ref = getattr(self.cfg.rewards, "relative_tracking_min_lin_cmd", 0.2)
@@ -875,9 +879,9 @@ class BlackWEnv(BlackEnv):
         lin_weight = getattr(self.cfg.rewards, "inactive_lin_vel_weight", 1.0)
         yaw_weight = getattr(self.cfg.rewards, "inactive_ang_vel_weight", 0.25)
         return (
-            lin_weight * (1.0 - x_activity) * torch.square(self.base_lin_vel[:, 0])
-            + lin_weight * (1.0 - y_activity) * torch.square(self.base_lin_vel[:, 1])
-            + yaw_weight * (1.0 - yaw_activity) * torch.square(self.base_ang_vel[:, 2])
+            lin_weight * (1.0 - x_activity) * torch.abs(self.base_lin_vel[:, 0])
+            + lin_weight * (1.0 - y_activity) * torch.abs(self.base_lin_vel[:, 1])
+            + yaw_weight * (1.0 - yaw_activity) * torch.abs(self.base_ang_vel[:, 2])
         )
 
     def _reward_trot(self):
