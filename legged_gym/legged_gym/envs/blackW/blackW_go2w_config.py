@@ -2,8 +2,41 @@ from legged_gym.envs.blackW.blackW_config import BlackWCfg, BlackWCfgPPO
 
 
 class BlackWGo2WRewardCfg(BlackWCfg):
+    class init_state(BlackWCfg.init_state):
+        # 1. 初始姿态
+        pos = [0.0, 0.0, 0.55]
+        default_joint_angles = {
+            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527, 'FL_wheel_joint': 0.0,
+            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,  'FR_wheel_joint': 0.0,
+            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527, 'RL_wheel_joint': 0.0,
+            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527,  'RR_wheel_joint': 0.0,
+        }
+
+    class control( BlackWCfg.control ):
+        # PD Drive parameters:
+        control_type = 'P' 
+        # 刚度 (P Gain)
+        stiffness = {
+            'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
+            'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
+            'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
+            'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
+        }
+        # 阻尼 (D Gain)
+        damping = {
+            'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
+            'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
+            'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0,
+            'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
+        }
+        action_scale = 0.25
+        vel_scale = 10.0
+        decimation = 4
+        wheel_speed = 1
+    
+
     class terrain(BlackWCfg.terrain):
-        mesh_type = "trimesh"
+        mesh_type = "plane"
         static_friction = 0.8
         dynamic_friction = 0.8
         # Map Go2W's [smooth slope, rough slope, stairs up, stairs down, discrete]
@@ -99,7 +132,7 @@ class BlackWGo2WRewardCfg(BlackWCfg):
         soft_dof_pos_limit = 1.0
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
-        base_height_target = 0.4
+        base_height_target = 0.53
         max_contact_force = 100.0
 
     class env(BlackWCfg.env):
@@ -123,9 +156,9 @@ class BlackWGo2WRewardCfgPPO(BlackWCfgPPO):
         sym_action_mask = None
 
     class runner(BlackWCfgPPO.runner):
-        save_interval = 1000
+        save_interval = 20
         num_steps_per_env = 48
-        max_iterations = 20000
+        max_iterations = 500
         experiment_name = "blackW_go2w_reward"
         run_name = ""
         resume = None
