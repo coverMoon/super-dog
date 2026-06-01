@@ -18,17 +18,17 @@ class BlackWCfg(BlackCfg):
 
         # 刚度 (P Gain)
         stiffness = {
-            'FL_hip_joint': 60.0, 'RL_hip_joint': 60.0, 'FR_hip_joint': 60.0, 'RR_hip_joint': 60.0,
+            'FL_hip_joint': 50.0, 'RL_hip_joint': 50.0, 'FR_hip_joint': 50.0, 'RR_hip_joint': 50.0,
             'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
             'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
             'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
         }
         # 阻尼 (D Gain)
         damping = {
-            'FL_hip_joint': 1.5, 'RL_hip_joint': 1.5, 'FR_hip_joint': 1.5, 'RR_hip_joint': 1.5,
+            'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
             'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
             'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
-            'FL_wheel_joint': 2.0, 'RL_wheel_joint': 2.0, 'FR_wheel_joint': 2.0, 'RR_wheel_joint': 2.0,
+            'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
         }
 
         # stiffness = {
@@ -100,14 +100,15 @@ class BlackWCfg(BlackCfg):
         heading_command = False  # if true: compute ang vel command from heading error
         
         # 指定命令空间和采样概率
-        stand_command_prob = 0.2
-        x_command_prob = 0.15
-        y_command_prob = 0.45
-        yaw_command_prob = 0.2
-        mixed_command_prob = 0.0
+        stand_command_prob = 0.15
+        x_command_prob = 0.0
+        y_command_prob = 0.0
+        yaw_command_prob = 0.0
+        mixed_command_prob = 0.85
         # 最小非零命令值
         min_nonzero_lin_cmd = 0.2
         min_nonzero_yaw_cmd = 0.2
+        preserve_failed_reset_commands = True
 
         class ranges(BlackCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
@@ -240,7 +241,7 @@ class BlackWCfg(BlackCfg):
         only_positive_rewards = False
 
         class terrain_adaptive(BlackCfg.rewards.terrain_adaptive):
-            enabled = True
+            enabled = False
             terrain_variability_clip = 0.30
 
             class orientation(BlackCfg.rewards.terrain_adaptive.orientation):
@@ -305,10 +306,12 @@ class BlackWCfg(BlackCfg):
 
         class scales(BlackCfg.rewards.scales):
             # Active task rewards
-            tracking_lin_vel = 5.0
-            tracking_lin_vel_y = 5.0
-            tracking_ang_vel = 5.0
+            tracking_lin_vel = 8.0
+            tracking_lin_vel_y = 8.0
+            tracking_ang_vel = 8.0
             wheel_vel_ref_tracking = 2.0
+            progress = 2.0
+            stand_alive = 5.0
 
             # Active posture/contact penalties
             termination = -1000.0
@@ -318,8 +321,8 @@ class BlackWCfg(BlackCfg):
             ang_vel_xy = -0.05
             inactive_axis_vel = -0.5
             collision = -0.1
-            stand_still = -2.0
-            stand_still_wheels = -1.0
+            stand_still = -1.5
+            stand_still_wheels = -0.5
             hip_pos = -3.0
             yaw_contact_hip_deviation = -10.0
             all_joint_pos = -0.5
@@ -331,17 +334,16 @@ class BlackWCfg(BlackCfg):
             raibert = 1.0
 
             # Active smoothness/limit penalties
-            action_rate = -0.05
+            action_rate = -0.1
             smoothness = -0.02
-            wheel_action_rate = -0.05
-            wheel_smoothness = -0.01
+            wheel_action_rate = -0.1
+            wheel_smoothness = -0.02
             torques = -1e-7
             dof_vel = -1e-7
             dof_pos_limits = -10.0
             torque_limits = -1e-5
 
             # Disabled rewards/penalties
-            progress = 0.0
             dof_acc = -0.0
             joint_power = -0.0
             feet_stumble = -0.0
@@ -394,7 +396,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.005
+        entropy_coef = 0.003
         num_learning_epochs = 5
         num_mini_batches = 4  # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 2.e-4  # 5.e-4
@@ -446,6 +448,6 @@ class BlackWCfgPPO(BlackCfgPPO):
         run_name = ''
         num_steps_per_env = 100
         experiment_name = 'rough_blackW_dog'
-        max_iterations = 500
+        max_iterations = 1000
         # none: start curriculum from config; range: restore command ranges only; full: also restore EMA/pass streak.
         resume_command_curriculum = 'range'

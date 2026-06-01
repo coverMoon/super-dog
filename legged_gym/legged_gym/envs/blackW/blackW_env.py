@@ -306,7 +306,16 @@ class BlackWEnv(BlackEnv):
 
     def reset_idx(self, env_ids):
         self._finalize_command_curriculum_segments(env_ids)
+        preserve_failed_commands = getattr(self.cfg.commands, "preserve_failed_reset_commands", True)
+        previous_commands = self.commands[env_ids].clone() if preserve_failed_commands and len(env_ids) > 0 else None
+        failed_reset_mask = ~self.time_out_buf[env_ids] if preserve_failed_commands and len(env_ids) > 0 else None
+
         super().reset_idx(env_ids)
+
+        if preserve_failed_commands and len(env_ids) > 0 and torch.any(failed_reset_mask):
+            failed_env_ids = env_ids[failed_reset_mask]
+            self.commands[failed_env_ids] = previous_commands[failed_reset_mask]
+
         self._randomize_blackW_wheel_domain(env_ids)
 
     def update_command_curriculum(self, env_ids):
@@ -1028,18 +1037,27 @@ class BlackWEnv(BlackEnv):
         reward = planning_weight * (tracking_reward + cfg.approach_bonus * approach_bonus)
         return torch.sum(reward, dim=1) * move_cmd.float()
 
+    def _stand_command_mask(self):
+        return (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+
+    def _stand_command_elapsed(self):
+        resample_interval = max(int(self.cfg.commands.resampling_time / self.dt), 1)
+        return (self.episode_length_buf % resample_interval).float() * self.dt
+
+    def _reward_stand_alive(self):
+        return self._stand_command_mask().float() * (~self.reset_buf).float()
+
     def _reward_stand_still(self):
-        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+        is_still = self._stand_command_mask()
         pos_error = torch.sum(
             torch.abs(self.dof_pos[:, self.leg_dof_indices] - self.default_dof_pos[:, self.leg_dof_indices]),
             dim=1,
         )
         leg_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.leg_dof_indices]), dim=1)
-        # wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
         return (pos_error + 0.1 * leg_vel_error) * is_still
 
     def _reward_stand_still_wheels(self):
-        is_still = (torch.norm(self.commands[:, :2], dim=1) < 0.1) & (torch.abs(self.commands[:, 2]) < 0.1)
+        is_still = self._stand_command_mask()
         wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_indices]), dim=1)
         return wheel_vel_error * is_still
 
