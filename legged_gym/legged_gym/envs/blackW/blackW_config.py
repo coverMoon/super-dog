@@ -311,10 +311,10 @@ class BlackWCfg(BlackCfg):
             max_approach_speed = 0.4
 
         class wheel_obstacle_lift:
-            horizontal_force_threshold = 30.0
+            horizontal_force_threshold = 25.0
             command_threshold = 0.2
             target_lift_height = 0.08
-            active_time = 0.25
+            active_time = 0.35
             sigma = 0.04
 
         class scales:
@@ -449,8 +449,8 @@ class BlackWCfgPPO(BlackCfgPPO):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
         save_interval = 20
-        num_steps_per_env = 48
-        max_iterations = 1000
+        num_steps_per_env = 64
+        max_iterations = 5000
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None
