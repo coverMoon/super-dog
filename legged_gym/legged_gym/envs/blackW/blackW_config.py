@@ -3,8 +3,10 @@ from legged_gym.envs.black.black_config import BlackCfg, BlackCfgPPO
 
 class BlackWCfg(BlackCfg):
     class init_state(BlackCfg.init_state):
-        # 1. 初始姿态
         pos = [0.0, 0.0, 0.55]
+        rot = [0.0, 0.0, 0.0, 1.0]
+        lin_vel = [0.0, 0.0, 0.0]
+        ang_vel = [0.0, 0.0, 0.0]
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527, 'FL_wheel_joint': 0.0,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,  'FR_wheel_joint': 0.0,
@@ -12,17 +14,14 @@ class BlackWCfg(BlackCfg):
             'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527,  'RR_wheel_joint': 0.0,
         }
 
-    class control( BlackCfg.control ):
-        # PD Drive parameters:
-        control_type = 'P' 
-        # 刚度 (P Gain)
+    class control(BlackCfg.control):
+        control_type = 'P'
         stiffness = {
             'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
             'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
             'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
             'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
         }
-        # 阻尼 (D Gain)
         damping = {
             'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
             'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
@@ -30,6 +29,9 @@ class BlackWCfg(BlackCfg):
             'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
         }
         action_scale = 0.25
+        decimation = 4
+        hip_reduction = 1.0
+
         wheel_control_mode = "learned"
         vel_scale = 10.0
         wheel_residual_scale = 3.0
@@ -41,31 +43,11 @@ class BlackWCfg(BlackCfg):
             "RL": 1.0,
             "RR": -1.0,
         }
-        decimation = 4
         wheel_speed = 1
-    
 
-    class terrain(BlackCfg.terrain):
-        mesh_type = "plane"
-        static_friction = 0.8
-        dynamic_friction = 0.8
-        # Map Go2W's [smooth slope, rough slope, stairs up, stairs down, discrete]
-        # onto this repo's [plane, smooth slope, rough slope, stairs down,
-        # stairs up, discrete, ...] terrain table.
-        terrain_proportions = [0.0, 0.1, 0.1, 0.2, 0.35, 0.25, 0.0, 0.0, 0.0, 0.0]
-
-    class commands(BlackCfg.commands):
-        curriculum = True
-        max_curriculum = 1.5
-        num_commands = 4
-        resampling_time = 10.0
-        heading_command = True
-
-        class ranges:
-            lin_vel_x = [-1.0, 1.0]
-            lin_vel_y = [-0.6, 0.6]
-            ang_vel_yaw = [-1.0, 1.0]
-            heading = [-3.14, 3.14]
+        motor_friction_coulomb = 0.35
+        motor_friction_velocity_scale = 3.0
+        motor_friction_viscous = 0.1
 
     class asset(BlackCfg.asset):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/blackW/blackW_description.urdf"
@@ -75,8 +57,84 @@ class BlackWCfg(BlackCfg):
         penalize_contacts_on = ["thigh", "calf", "base"]
         terminate_after_contacts_on = ["base"]
         privileged_contacts_on = ["thigh", "calf", "base"]
+        disable_gravity = False
+        collapse_fixed_joints = True
+        fix_base_link = False
+        default_dof_drive_mode = 3
         self_collisions = 1
         replace_cylinder_with_capsule = False
+        flip_visual_attachments = False
+        density = 0.001
+        angular_damping = 0.0
+        linear_damping = 0.0
+        max_angular_velocity = 1000.0
+        max_linear_velocity = 1000.0
+        armature = 0.0
+        thickness = 0.01
+
+    class env(BlackCfg.env):
+        num_envs = 4096
+        num_one_step_observations = 3 + 3 + 3 + 16 + 16 + 16
+        num_observations = num_one_step_observations * 6
+        num_one_step_privileged_obs = num_one_step_observations + 3 + 3 + 187
+        num_privileged_obs = num_one_step_privileged_obs * 1
+        num_actions = 16
+        env_spacing = 3.0
+        send_timeouts = True
+        episode_length_s = 20
+        stuck_timeout_s = 4.0
+        stuck_vel_threshold = 0.05
+        stuck_command_threshold = 0.2
+        stuck_grace_s = 1.0
+
+    class terrain(BlackCfg.terrain):
+        mesh_type = "plane"
+        horizontal_scale = 0.1
+        vertical_scale = 0.005
+        border_size = 25
+        curriculum = True
+        static_friction = 0.8
+        dynamic_friction = 0.8
+        restitution = 0.0
+        measure_heights = True
+        height_measurement_base_offset = 0.5
+        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+        selected = False
+        terrain_kwargs = None
+        max_init_terrain_level = 5
+        terrain_length = 8.0
+        terrain_width = 8.0
+        num_rows = 10
+        num_cols = 20
+        # [plane, smooth slope, rough slope, stairs down, stairs up, discrete, ...]
+        terrain_proportions = [0.0, 0.1, 0.1, 0.2, 0.35, 0.25, 0.0, 0.0, 0.0, 0.0]
+        slope_treshold = 0.75
+
+    class commands(BlackCfg.commands):
+        curriculum = True
+        max_curriculum = 1.5
+        curriculum_threshold = 0.7
+        curriculum_ema_alpha = 0.2
+        curriculum_required_passes = 2
+        curriculum_buffer_min = 256
+        num_commands = 4
+        resampling_time = 10.0
+        heading_command = True
+        low_speed_x_range = [-1.0, 1.0]
+        high_vel_env_fraction = 0.2
+        high_speed_lateral_disable_x_threshold = 1.0
+        xy_norm_stop_threshold = 0.2
+        heading_yaw_gain = 0.5
+        heading_yaw_clip = 2.0
+        x_curriculum_step = 0.2
+        x_curriculum_score_scale = 0.8
+
+        class ranges:
+            lin_vel_x = [-1.0, 1.0]
+            lin_vel_y = [-0.6, 0.6]
+            ang_vel_yaw = [-1.0, 1.0]
+            heading = [-3.14, 3.14]
 
     class domain_rand(BlackCfg.domain_rand):
         randomize_payload_mass = True
@@ -120,72 +178,231 @@ class BlackWCfg(BlackCfg):
         delay = True
         lag_timesteps = 3
 
-        randomize_wheel_delay = False
-        randomize_wheel_motor = False
-        randomize_wheel_mass = False
-        randomize_wheel_geometry = False
+        randomize_wheel_delay = True
+        wheel_lag_timesteps = 3
+
+        randomize_wheel_motor = True
+        wheel_motor_strength_range = [0.8, 1.2]
+        wheel_vel_ref_scale_range = [0.9, 1.1]
+
+        randomize_wheel_mass = True
+        wheel_mass_scale_range = [0.9, 1.1]
+        wheel_inertia_scale_range = [0.8, 1.2]
+
+        randomize_wheel_geometry = True
+        wheel_radius_scale_range = [0.9, 1.1]
+        wheel_base_half_width_scale_range = [0.95, 1.05]
+
+    class normalization(BlackCfg.normalization):
+        class obs_scales(BlackCfg.normalization.obs_scales):
+            lin_vel = 2.0
+            ang_vel = 0.25
+            dof_pos = 1.0
+            dof_vel = 0.05
+            height_measurements = 5.0
+
+        clip_observations = 100.0
+        clip_actions = 100.0
+
+    class noise(BlackCfg.noise):
+        add_noise = True
+        noise_level = 1.0
+
+        class noise_scales(BlackCfg.noise.noise_scales):
+            dof_pos = 0.08
+            dof_vel = 2.0
+            lin_vel = 0.1
+            ang_vel = 0.3
+            gravity = 0.05
+            height_measurements = 0.1
 
     class rewards(BlackCfg.rewards):
+        cycle_time = 0.8
+        clearance_height_target = 0.08
+        tracking_sigma = 0.25
+        soft_dof_pos_limit = 1.0
+        soft_dof_vel_limit = 1.0
+        soft_torque_limit = 1.0
+        base_height_target = 0.53
+        only_positive_rewards = False
+        max_contact_force = 100.0
+        stand_still_cmd_threshold = 0.1
+        run_still_cmd_threshold = 0.1
+        termination_contact_force_threshold = 1.0
+        collision_force_threshold = 0.1
+        feet_stumble_ratio = 3.0
+
+        class terrain_adaptive:
+            enabled = False
+            terrain_variability_clip = 0.30
+
+            class orientation:
+                enabled = True
+                mode = "decay"
+                sigma = 0.009
+                min_scale = 0.15
+                max_scale = 1.0
+
+            class smoothness:
+                enabled = True
+                mode = "decay"
+                sigma = 0.2
+                min_scale = 0.9
+                max_scale = 1.0
+
+            class action_rate:
+                enabled = True
+                mode = "decay"
+                sigma = 0.01
+                min_scale = 0.20
+                max_scale = 1.0
+
+            class torques:
+                enabled = False
+                mode = "decay"
+                sigma = 0.05
+                min_scale = 0.9
+                max_scale = 1.0
+
+            class progress:
+                enabled = False
+                mode = "boost"
+                sigma = 0.04
+                min_scale = 1.0
+                max_scale = 1.5
+
+            class foot_clearance:
+                enabled = True
+                mode = "margin"
+                std_gain = 2.0
+                max_extra_clearance = 0.15
+                stance_gain = 0.5
+                swing_high_penalty_weight = 0.25
+
+        class raibert:
+            nominal_front_x = 0.21
+            nominal_rear_x = -0.21
+            nominal_y = 0.155
+            max_linear_offset_x = 0.16
+            max_linear_offset_y = 0.06
+            vel_error_gain = 0.3
+            yaw_gain = 1.0
+            max_yaw_offset = 0.10
+            tracking_sigma = 0.06
+            late_swing_start_x = 0.35
+            late_swing_start_latyaw = 0.0
+            touchdown_gain = 0.4
+            approach_bonus = 0.25
+            max_approach_speed = 0.4
+
         class scales:
+            termination = -0.0
             tracking_lin_vel = 1.5
             tracking_ang_vel = 0.75
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.5
             base_height = -10.0
-            hip_default = -0.5
+            hip_default = -0.8
             stand_still = -0.5
             collision = -1.0
             feet_stumble = -0.1
-            action_rate = -0.01
+            action_rate = -0.05
+            smoothness = -0.01
             torques = -5.0e-4
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05
 
-        only_positive_rewards = True
-        tracking_sigma = 0.25
-        soft_dof_pos_limit = 1.0
-        soft_dof_vel_limit = 1.0
-        soft_torque_limit = 1.0
-        base_height_target = 0.53
-        max_contact_force = 100.0
+            joint_power = -0.0
+            foot_clearance = -0.0
+            feet_air_time = 0.0
+            dof_pos_limits = -0.0
+            dof_vel_limits = -0.0
+            torque_limits = -0.0
+            trot = 0.0
+            hip_pos = -0.0
+            all_joint_pos = -0.0
+            foot_slip = -0.0
+            foot_impact_vel = -0.0
+            progress = 0.0
+            raibert = 0.0
 
-    class env(BlackCfg.env):
-        num_envs = 4096
-        num_one_step_observations = 3 + 3 + 3 + 16 + 16 + 16
-        num_observations = num_one_step_observations * 6
-        num_one_step_privileged_obs = num_one_step_observations + 3 + 3 + 187
-        num_privileged_obs = num_one_step_privileged_obs * 1
-        num_actions = 16
+    class viewer(BlackCfg.viewer):
+        ref_env = 0
+        pos = [10, 0, 6]
+        lookat = [11.0, 5.0, 3.0]
+
+    class sim(BlackCfg.sim):
+        dt = 0.005
+        substeps = 1
+        gravity = [0.0, 0.0, -9.81]
+        up_axis = 1
+
+        class physx(BlackCfg.sim.physx):
+            num_threads = 10
+            solver_type = 1
+            num_position_iterations = 4
+            num_velocity_iterations = 0
+            contact_offset = 0.01
+            rest_offset = 0.0
+            bounce_threshold_velocity = 0.5
+            max_depenetration_velocity = 1.0
+            max_gpu_contact_pairs = 2**23
+            default_buffer_size_multiplier = 5
+            contact_collection = 2
 
 
 class BlackWCfgPPO(BlackCfgPPO):
+    seed = 1
+    runner_class_name = 'HIMOnPolicyRunner'
+
     class policy(BlackCfgPPO.policy):
         init_noise_std = 1.0
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [512, 256, 128]
+        activation = 'elu'
         action_std_groups = None
         action_std_group_init_noise_std = None
+        # rnn_type = 'lstm'
+        # rnn_hidden_size = 512
+        # rnn_num_layers = 1
 
     class algorithm(BlackCfgPPO.algorithm):
+        value_loss_coef = 1.0
+        use_clipped_value_loss = True
+        clip_param = 0.2
         entropy_coef = 0.005
+        num_learning_epochs = 5
+        num_mini_batches = 4
         learning_rate = 1.0e-3
+        schedule = 'adaptive'
+        gamma = 0.99
+        lam = 0.95
+        desired_kl = 0.01
         learning_rate_min = 1e-5
         learning_rate_max = 1e-2
+        max_grad_norm = 1.0
         sym_loss = False
         obs_permutation = None
         act_permutation = None
         sym_action_mask = None
+        frame_stack = 6
+        sym_coef = 0.8
 
     class runner(BlackCfgPPO.runner):
+        policy_class_name = 'HIMActorCritic'
+        algorithm_class_name = 'HIMPPO'
         save_interval = 20
-        num_steps_per_env = 48
+        num_steps_per_env = 64
         max_iterations = 500
-        experiment_name = "blackW_go2w_reward"
+        experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None
         load_run = -1
         checkpoint = -1
         resume_path = None
+        resume_command_curriculum = 'range'
 
 
 BlackWGo2WRewardCfg = BlackWCfg

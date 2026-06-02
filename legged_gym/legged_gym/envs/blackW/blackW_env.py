@@ -130,7 +130,11 @@ class BlackWEnv(BlackEnv):
             raise NameError(f"Unknown controller type: {self.cfg.control.control_type}")
 
         torques = torques * self.motor_strength_factors
-        friction_torque = 0.35 * torch.tanh(3.0 * self.dof_vel) + 0.1 * self.dof_vel
+        friction_torque = (
+            self.cfg.control.motor_friction_coulomb
+            * torch.tanh(self.cfg.control.motor_friction_velocity_scale * self.dof_vel)
+            + self.cfg.control.motor_friction_viscous * self.dof_vel
+        )
         torques = torques - friction_torque
         return torch.clip(torques, -self.torque_limits, self.torque_limits)
 
@@ -162,7 +166,9 @@ class BlackWEnv(BlackEnv):
 
         if self.cfg.terrain.measure_heights:
             heights = torch.clip(
-                self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights,
+                self.root_states[:, 2].unsqueeze(1)
+                - self.cfg.terrain.height_measurement_base_offset
+                - self.measured_heights,
                 -1,
                 1.,
             ) * self.obs_scales.height_measurements
@@ -202,7 +208,9 @@ class BlackWEnv(BlackEnv):
 
         if self.cfg.terrain.measure_heights:
             heights = torch.clip(
-                self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights,
+                self.root_states[:, 2].unsqueeze(1)
+                - self.cfg.terrain.height_measurement_base_offset
+                - self.measured_heights,
                 -1,
                 1.,
             ) * self.obs_scales.height_measurements
@@ -221,7 +229,10 @@ class BlackWEnv(BlackEnv):
             return
 
         self.commands[env_ids, 0] = torch_rand_float(
-            -1.0, 1.0, (len(env_ids), 1), device=self.device
+            self.cfg.commands.low_speed_x_range[0],
+            self.cfg.commands.low_speed_x_range[1],
+            (len(env_ids), 1),
+            device=self.device,
         ).squeeze(1)
         self.commands[env_ids, 1] = torch_rand_float(
             self.command_ranges["lin_vel_y"][0],
@@ -244,7 +255,7 @@ class BlackWEnv(BlackEnv):
                 device=self.device,
             ).squeeze(1)
 
-        high_vel_env_ids = env_ids[env_ids < (self.num_envs * 0.2)]
+        high_vel_env_ids = env_ids[env_ids < (self.num_envs * self.cfg.commands.high_vel_env_fraction)]
         self.commands[high_vel_env_ids, 0] = torch_rand_float(
             self.command_ranges["lin_vel_x"][0],
             self.command_ranges["lin_vel_x"][1],
@@ -253,10 +264,11 @@ class BlackWEnv(BlackEnv):
         ).squeeze(1)
 
         self.commands[high_vel_env_ids, 1:2] *= (
-            torch.norm(self.commands[high_vel_env_ids, 0:1], dim=1) < 1.0
+            torch.norm(self.commands[high_vel_env_ids, 0:1], dim=1)
+            < self.cfg.commands.high_speed_lateral_disable_x_threshold
         ).unsqueeze(1)
         self.commands[env_ids, :2] *= (
-            torch.norm(self.commands[env_ids, :2], dim=1) > 0.2
+            torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.xy_norm_stop_threshold
         ).unsqueeze(1)
 
     def _post_physics_step_callback(self):
@@ -267,9 +279,9 @@ class BlackWEnv(BlackEnv):
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
             self.commands[:, 2] = torch.clip(
-                0.5 * wrap_to_pi(self.commands[:, 3] - heading),
-                -2.0,
-                2.0,
+                self.cfg.commands.heading_yaw_gain * wrap_to_pi(self.commands[:, 3] - heading),
+                -self.cfg.commands.heading_yaw_clip,
+                self.cfg.commands.heading_yaw_clip,
             )
 
         if self.cfg.terrain.measure_heights:
@@ -282,29 +294,30 @@ class BlackWEnv(BlackEnv):
             self._disturbance_robots()
 
     def update_command_curriculum(self, env_ids):
-        low_vel_env_ids = env_ids[env_ids > (self.num_envs * 0.2)]
-        high_vel_env_ids = env_ids[env_ids < (self.num_envs * 0.2)]
+        low_vel_env_ids = env_ids[env_ids > (self.num_envs * self.cfg.commands.high_vel_env_fraction)]
+        high_vel_env_ids = env_ids[env_ids < (self.num_envs * self.cfg.commands.high_vel_env_fraction)]
         if len(low_vel_env_ids) == 0 or len(high_vel_env_ids) == 0:
             return
 
         low_score = torch.mean(self.episode_sums["tracking_lin_vel"][low_vel_env_ids]) / self.max_episode_length
         high_score = torch.mean(self.episode_sums["tracking_lin_vel"][high_vel_env_ids]) / self.max_episode_length
-        threshold = 0.8 * self.reward_scales["tracking_lin_vel"]
+        threshold = self.cfg.commands.x_curriculum_score_scale * self.reward_scales["tracking_lin_vel"]
         if low_score > threshold and high_score > threshold:
             self.command_ranges["lin_vel_x"][0] = np.clip(
-                self.command_ranges["lin_vel_x"][0] - 0.2,
+                self.command_ranges["lin_vel_x"][0] - self.cfg.commands.x_curriculum_step,
                 -self.cfg.commands.max_curriculum,
                 0.0,
             )
             self.command_ranges["lin_vel_x"][1] = np.clip(
-                self.command_ranges["lin_vel_x"][1] + 0.2,
+                self.command_ranges["lin_vel_x"][1] + self.cfg.commands.x_curriculum_step,
                 0.0,
                 self.cfg.commands.max_curriculum,
             )
 
     def check_termination(self):
         self.reset_buf = torch.any(
-            torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1.0,
+            torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1)
+            > self.cfg.rewards.termination_contact_force_threshold,
             dim=1,
         )
         self.time_out_buf = self.episode_length_buf > self.max_episode_length
@@ -341,21 +354,28 @@ class BlackWEnv(BlackEnv):
         dof_err = self.dof_pos - self.default_dof_pos
         dof_err = dof_err.clone()
         dof_err[:, self.wheel_indices] = 0.0
-        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        return torch.sum(torch.abs(dof_err), dim=1) * (
+            torch.norm(self.commands[:, :2], dim=1) < self.cfg.rewards.stand_still_cmd_threshold
+        )
 
     def _reward_torques(self):
         return torch.sum(torch.square(self.torques), dim=1)
 
     def _reward_collision(self):
         return torch.sum(
-            1.0 * (torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1),
+            1.0
+            * (
+                torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1)
+                > self.cfg.rewards.collision_force_threshold
+            ),
             dim=1,
         )
 
     def _reward_feet_stumble(self):
         return torch.any(
             torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
-            > 3.0 * torch.abs(self.contact_forces[:, self.feet_indices, 2]),
+            > self.cfg.rewards.feet_stumble_ratio
+            * torch.abs(self.contact_forces[:, self.feet_indices, 2]),
             dim=1,
         )
 
@@ -374,7 +394,9 @@ class BlackWEnv(BlackEnv):
         dof_err = self.dof_pos - self.default_dof_pos
         dof_err = dof_err.clone()
         dof_err[:, self.wheel_indices] = 0.0
-        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+        return torch.sum(torch.abs(dof_err), dim=1) * (
+            torch.norm(self.commands[:, :2], dim=1) > self.cfg.rewards.run_still_cmd_threshold
+        )
 
 
 BlackWGo2WRewardEnv = BlackWEnv
