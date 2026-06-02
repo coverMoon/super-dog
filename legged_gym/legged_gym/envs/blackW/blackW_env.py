@@ -13,6 +13,69 @@ class BlackWEnv(BlackEnv):
     def _init_buffers(self):
         super()._init_buffers()
         self._init_blackW_dof_indices()
+        self._init_blackW_command_curriculum_buffers()
+        self._init_blackW_obstacle_lift_buffers()
+
+    def _init_blackW_wheel_randomization_buffers(self):
+        self.wheel_vel_ref_scales = torch.ones(
+            self.num_envs,
+            len(self.wheel_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.wheel_vel_ref_biases = torch.zeros_like(self.wheel_vel_ref_scales)
+        self.wheel_dof_vel_obs_biases = torch.zeros_like(self.wheel_vel_ref_scales)
+
+    def _resample_wheel_randomization(self, env_ids):
+        if len(env_ids) == 0 or not hasattr(self, "wheel_vel_ref_scales"):
+            return
+        num_wheels = len(self.wheel_indices)
+        if getattr(self.cfg.domain_rand, "randomize_wheel_motor", False):
+            scale_range = getattr(self.cfg.domain_rand, "wheel_vel_ref_scale_range", [1.0, 1.0])
+            self.wheel_vel_ref_scales[env_ids] = torch_rand_float(
+                scale_range[0], scale_range[1], (len(env_ids), num_wheels), device=self.device
+            )
+        else:
+            self.wheel_vel_ref_scales[env_ids] = 1.0
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_vel_ref_bias", False):
+            bias_range = getattr(self.cfg.domain_rand, "wheel_vel_ref_bias_range", [0.0, 0.0])
+            self.wheel_vel_ref_biases[env_ids] = torch_rand_float(
+                bias_range[0], bias_range[1], (len(env_ids), num_wheels), device=self.device
+            )
+        else:
+            self.wheel_vel_ref_biases[env_ids] = 0.0
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_dof_vel_obs_bias", False):
+            obs_bias_range = getattr(self.cfg.domain_rand, "wheel_dof_vel_obs_bias_range", [0.0, 0.0])
+            self.wheel_dof_vel_obs_biases[env_ids] = torch_rand_float(
+                obs_bias_range[0], obs_bias_range[1], (len(env_ids), num_wheels), device=self.device
+            )
+        else:
+            self.wheel_dof_vel_obs_biases[env_ids] = 0.0
+
+    def _init_blackW_obstacle_lift_buffers(self):
+        self.wheel_obstacle_lift_timer = torch.zeros(
+            self.num_envs,
+            len(self.wheel_body_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.wheel_obstacle_lift_target_z = torch.zeros_like(self.wheel_obstacle_lift_timer)
+
+    def _init_blackW_command_curriculum_buffers(self):
+        self.cmd_curr_axis_buffers = {
+            "x_low": [],
+            "x_high": [],
+            "y": [],
+            "yaw": [],
+        }
+        self.last_cmd_curr_score = float("nan")
+        self.last_cmd_curr_y_score = float("nan")
+        if hasattr(self, "last_cmd_curr_yaw_score"):
+            delattr(self, "last_cmd_curr_yaw_score")
 
     def _init_blackW_dof_indices(self):
         wheel_names = []
@@ -51,17 +114,41 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
+        wheel_body_names = []
+        for key in getattr(self.cfg.asset, "wheel_name", []):
+            wheel_body_names.extend([name for name in self.body_names if key in name])
+        if len(wheel_body_names) == 0:
+            wheel_body_names = list(getattr(self, "feet_names", []))
+        self.wheel_body_indices = torch.tensor(
+            [self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], name) for name in wheel_body_names],
+            dtype=torch.long,
+            device=self.device,
+            requires_grad=False,
+        )
 
         if len(self.wheel_indices) != 4:
             raise RuntimeError(f"Expected 4 wheel joints, got {len(self.wheel_indices)} from {self.dof_names}")
         if len(self.hip_indices) != 4:
             raise RuntimeError(f"Expected 4 hip joints, got {len(self.hip_indices)} from {self.dof_names}")
+        if len(self.wheel_body_indices) != 4:
+            raise RuntimeError(f"Expected 4 wheel bodies, got {len(self.wheel_body_indices)} from {self.body_names}")
 
         print("### blackW dof names:", self.dof_names)
         print("### blackW wheel indices:", self.wheel_indices.detach().cpu().tolist())
+        print("### blackW wheel body indices:", self.wheel_body_indices.detach().cpu().tolist())
         print("### blackW hip indices:", self.hip_indices.detach().cpu().tolist())
         print("### blackW wheel forward sign:", self.wheel_forward_sign.detach().cpu().tolist())
         print("### blackW wheel control mode:", self.cfg.control.wheel_control_mode)
+
+        self._init_blackW_wheel_randomization_buffers()
+        self._resample_wheel_randomization(torch.arange(self.num_envs, device=self.device))
+
+    def reset_idx(self, env_ids):
+        super().reset_idx(env_ids)
+        if len(env_ids) > 0 and hasattr(self, "wheel_obstacle_lift_timer"):
+            self.wheel_obstacle_lift_timer[env_ids] = 0.0
+            self.wheel_obstacle_lift_target_z[env_ids] = 0.0
+        self._resample_wheel_randomization(env_ids)
 
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign
@@ -98,10 +185,15 @@ class BlackWEnv(BlackEnv):
         wheel_actions = actions[:, self.wheel_indices]
         signed_wheel_actions = wheel_actions * self.wheel_forward_sign.unsqueeze(0)
         if mode == "learned":
-            return signed_wheel_actions * self.cfg.control.vel_scale
+            return (
+                signed_wheel_actions
+                * self.cfg.control.vel_scale
+                * self.wheel_vel_ref_scales
+                + self.wheel_vel_ref_biases
+            )
         if mode == "residual":
-            residual = signed_wheel_actions * self.cfg.control.wheel_residual_scale
-            return self._target_wheel_velocities() + residual
+            residual = signed_wheel_actions * self.cfg.control.wheel_residual_scale * self.wheel_vel_ref_scales
+            return self._target_wheel_velocities() + residual + self.wheel_vel_ref_biases
         raise NameError(f"Unknown wheel control mode: {mode}")
 
     def _compute_torques(self, actions):
@@ -144,6 +236,11 @@ class BlackWEnv(BlackEnv):
         dof_pos_error[:, self.wheel_indices] = 0.0
         return dof_pos_error
 
+    def _dof_vel_obs(self):
+        dof_vel = self.dof_vel.clone()
+        dof_vel[:, self.wheel_indices] += self.wheel_dof_vel_obs_biases
+        return dof_vel
+
     def compute_observations(self):
         dof_pos_error = self._dof_pos_error_obs()
         current_obs = torch.cat((
@@ -151,7 +248,7 @@ class BlackWEnv(BlackEnv):
             self.base_ang_vel * self.obs_scales.ang_vel,
             self.projected_gravity,
             dof_pos_error * self.obs_scales.dof_pos,
-            self.dof_vel * self.obs_scales.dof_vel,
+            self._dof_vel_obs() * self.obs_scales.dof_vel,
             self.actions,
         ), dim=-1)
 
@@ -193,7 +290,7 @@ class BlackWEnv(BlackEnv):
             self.base_ang_vel * self.obs_scales.ang_vel,
             self.projected_gravity,
             dof_pos_error * self.obs_scales.dof_pos,
-            self.dof_vel * self.obs_scales.dof_vel,
+            self._dof_vel_obs() * self.obs_scales.dof_vel,
             self.actions,
         ), dim=-1)
 
@@ -293,26 +390,114 @@ class BlackWEnv(BlackEnv):
         ):
             self._disturbance_robots()
 
-    def update_command_curriculum(self, env_ids):
-        low_vel_env_ids = env_ids[env_ids > (self.num_envs * self.cfg.commands.high_vel_env_fraction)]
-        high_vel_env_ids = env_ids[env_ids < (self.num_envs * self.cfg.commands.high_vel_env_fraction)]
-        if len(low_vel_env_ids) == 0 or len(high_vel_env_ids) == 0:
+    def _append_command_curriculum_samples(self, buffer_name, reward_name, env_ids, command_axis):
+        if len(env_ids) == 0 or reward_name not in self.episode_sums or reward_name not in self.reward_scales:
+            return
+        reward_scale = abs(self.reward_scales.get(reward_name, 0.0))
+        if reward_scale <= 0.0:
             return
 
-        low_score = torch.mean(self.episode_sums["tracking_lin_vel"][low_vel_env_ids]) / self.max_episode_length
-        high_score = torch.mean(self.episode_sums["tracking_lin_vel"][high_vel_env_ids]) / self.max_episode_length
-        threshold = self.cfg.commands.x_curriculum_score_scale * self.reward_scales["tracking_lin_vel"]
-        if low_score > threshold and high_score > threshold:
-            self.command_ranges["lin_vel_x"][0] = np.clip(
-                self.command_ranges["lin_vel_x"][0] - self.cfg.commands.x_curriculum_step,
-                -self.cfg.commands.max_curriculum,
-                0.0,
+        score_env_ids = env_ids
+        cmd_min = 0.05
+        axis_mask = torch.abs(self.commands[score_env_ids, command_axis]) > cmd_min
+        score_env_ids = score_env_ids[axis_mask]
+        if len(score_env_ids) == 0:
+            return
+
+        episode_len = torch.clamp(self.episode_length_buf[score_env_ids].float(), min=1.0)
+        ratios = self.episode_sums[reward_name][score_env_ids] / episode_len / reward_scale
+        ratios = ratios.detach().cpu()
+        finite_mask = torch.isfinite(ratios)
+        if torch.any(finite_mask):
+            self.cmd_curr_axis_buffers[buffer_name].append(ratios[finite_mask])
+
+    def _command_curriculum_buffer_count(self, buffer_name):
+        return sum(chunk.numel() for chunk in self.cmd_curr_axis_buffers[buffer_name])
+
+    def _command_curriculum_buffer_mean(self, buffer_name):
+        if self._command_curriculum_buffer_count(buffer_name) == 0:
+            return None
+        return torch.cat(self.cmd_curr_axis_buffers[buffer_name]).mean().item()
+
+    def _clear_command_curriculum_buffer(self, buffer_name):
+        self.cmd_curr_axis_buffers[buffer_name] = []
+
+    def _expand_command_range(self, range_name, step, max_abs):
+        self.command_ranges[range_name][0] = np.clip(
+            self.command_ranges[range_name][0] - step,
+            -max_abs,
+            0.0,
+        )
+        self.command_ranges[range_name][1] = np.clip(
+            self.command_ranges[range_name][1] + step,
+            0.0,
+            max_abs,
+        )
+
+    def update_command_curriculum(self, env_ids):
+        if not hasattr(self, "cmd_curr_axis_buffers"):
+            self._init_blackW_command_curriculum_buffers()
+        if len(env_ids) == 0:
+            return
+
+        high_fraction = self.cfg.commands.high_vel_env_fraction
+        high_cutoff = self.num_envs * high_fraction
+        low_vel_env_ids = env_ids[env_ids >= high_cutoff]
+        high_vel_env_ids = env_ids[env_ids < high_cutoff]
+
+        self._append_command_curriculum_samples("x_low", "tracking_lin_vel_x", low_vel_env_ids, 0)
+        self._append_command_curriculum_samples("x_high", "tracking_lin_vel_x", high_vel_env_ids, 0)
+        self._append_command_curriculum_samples("y", "tracking_lin_vel_y", env_ids, 1)
+
+        buffer_min = max(1, int(getattr(self.cfg.commands, "curriculum_buffer_min", 256)))
+        x_high_min = max(4, int(round(buffer_min * high_fraction)))
+        x_low_min = max(8, buffer_min - x_high_min)
+        if (
+            self._command_curriculum_buffer_count("x_low") >= x_low_min
+            and self._command_curriculum_buffer_count("x_high") >= x_high_min
+        ):
+            x_ratio = min(
+                self._command_curriculum_buffer_mean("x_low"),
+                self._command_curriculum_buffer_mean("x_high"),
             )
-            self.command_ranges["lin_vel_x"][1] = np.clip(
-                self.command_ranges["lin_vel_x"][1] + self.cfg.commands.x_curriculum_step,
-                0.0,
-                self.cfg.commands.max_curriculum,
-            )
+            x_threshold = self.cfg.commands.x_curriculum_score_scale
+            self.last_cmd_curr_score = x_ratio / max(x_threshold, 1e-6)
+            if x_ratio > x_threshold:
+                self._expand_command_range(
+                    "lin_vel_x",
+                    self.cfg.commands.x_curriculum_step,
+                    self.cfg.commands.max_curriculum,
+                )
+            self._clear_command_curriculum_buffer("x_low")
+            self._clear_command_curriculum_buffer("x_high")
+
+        if self._command_curriculum_buffer_count("y") >= buffer_min:
+            y_ratio = self._command_curriculum_buffer_mean("y")
+            y_threshold = self.cfg.commands.y_curriculum_score_scale
+            self.last_cmd_curr_y_score = y_ratio / max(y_threshold, 1e-6)
+            if y_ratio > y_threshold:
+                self._expand_command_range(
+                    "lin_vel_y",
+                    self.cfg.commands.y_curriculum_step,
+                    self.cfg.commands.max_y_curriculum,
+                )
+            self._clear_command_curriculum_buffer("y")
+
+        if not self.cfg.commands.heading_command:
+            self._append_command_curriculum_samples("yaw", "tracking_ang_vel", env_ids, 2)
+            if self._command_curriculum_buffer_count("yaw") >= buffer_min:
+                yaw_ratio = self._command_curriculum_buffer_mean("yaw")
+                yaw_threshold = self.cfg.commands.yaw_curriculum_score_scale
+                self.last_cmd_curr_yaw_score = yaw_ratio / max(yaw_threshold, 1e-6)
+                if yaw_ratio > yaw_threshold:
+                    self._expand_command_range(
+                        "ang_vel_yaw",
+                        self.cfg.commands.yaw_curriculum_step,
+                        self.cfg.commands.max_yaw_curriculum,
+                    )
+                self._clear_command_curriculum_buffer("yaw")
+        elif hasattr(self, "last_cmd_curr_yaw_score"):
+            delattr(self, "last_cmd_curr_yaw_score")
 
     def check_termination(self):
         self.reset_buf = torch.any(
@@ -325,6 +510,14 @@ class BlackWEnv(BlackEnv):
 
     def _reward_tracking_lin_vel(self):
         lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        return torch.exp(-lin_vel_error / self.cfg.rewards.tracking_sigma)
+
+    def _reward_tracking_lin_vel_x(self):
+        lin_vel_error = torch.square(self.commands[:, 0] - self.base_lin_vel[:, 0])
+        return torch.exp(-lin_vel_error / self.cfg.rewards.tracking_sigma)
+
+    def _reward_tracking_lin_vel_y(self):
+        lin_vel_error = torch.square(self.commands[:, 1] - self.base_lin_vel[:, 1])
         return torch.exp(-lin_vel_error / self.cfg.rewards.tracking_sigma)
 
     def _reward_tracking_ang_vel(self):
@@ -378,6 +571,33 @@ class BlackWEnv(BlackEnv):
             * torch.abs(self.contact_forces[:, self.feet_indices, 2]),
             dim=1,
         )
+
+    def _reward_wheel_obstacle_lift(self):
+        cfg = self.cfg.rewards.wheel_obstacle_lift
+        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
+        wheel_z = wheel_states[:, :, 2]
+        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
+        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
+        contact_gate = horizontal_force > cfg.horizontal_force_threshold
+        command_gate = torch.norm(self.commands[:, :2], dim=1, keepdim=True) > cfg.command_threshold
+        trigger = contact_gate & command_gate
+        active = self.wheel_obstacle_lift_timer > 0.0
+        new_trigger = trigger & ~active
+
+        new_target = wheel_z.detach() + cfg.target_lift_height
+        self.wheel_obstacle_lift_target_z = torch.where(new_trigger, new_target, self.wheel_obstacle_lift_target_z)
+        active_time = max(cfg.active_time, self.dt)
+        self.wheel_obstacle_lift_timer = torch.where(
+            new_trigger,
+            torch.full_like(self.wheel_obstacle_lift_timer, active_time),
+            torch.clamp(self.wheel_obstacle_lift_timer - self.dt, min=0.0),
+        )
+
+        active = self.wheel_obstacle_lift_timer > 0.0
+        height_error = torch.clamp(self.wheel_obstacle_lift_target_z - wheel_z, min=0.0)
+        sigma = max(cfg.sigma, 1e-6)
+        lift_reward = torch.exp(-torch.square(height_error) / sigma)
+        return torch.sum(lift_reward * active.float() * command_gate.float(), dim=1)
 
     def _reward_action_rate(self):
         return torch.sum(torch.square(self.last_actions - self.actions), dim=1)

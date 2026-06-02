@@ -239,15 +239,12 @@ class LeggedRobot(BaseTask):
         if self.cfg.commands.curriculum:
             self.extras["episode"]["cmd_curr_x_range"] = self.command_ranges["lin_vel_x"][1]
             self.extras["episode"]["cmd_curr_x_score"] = getattr(self, "last_cmd_curr_score", float("nan"))
-            self.extras["episode"]["cmd_curr_x_progressed"] = getattr(self, "last_cmd_curr_progressed", 0.0)
             if hasattr(self, "last_cmd_curr_y_score"):
                 self.extras["episode"]["cmd_curr_y_range"] = self.command_ranges["lin_vel_y"][1]
                 self.extras["episode"]["cmd_curr_y_score"] = getattr(self, "last_cmd_curr_y_score", float("nan"))
-                self.extras["episode"]["cmd_curr_y_progressed"] = getattr(self, "last_cmd_curr_y_progressed", 0.0)
             if hasattr(self, "last_cmd_curr_yaw_score"):
                 self.extras["episode"]["cmd_curr_yaw_range"] = self.command_ranges["ang_vel_yaw"][1]
                 self.extras["episode"]["cmd_curr_yaw_score"] = getattr(self, "last_cmd_curr_yaw_score", float("nan"))
-                self.extras["episode"]["cmd_curr_yaw_progressed"] = getattr(self, "last_cmd_curr_yaw_progressed", 0.0)
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf

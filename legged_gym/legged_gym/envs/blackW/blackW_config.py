@@ -115,27 +115,35 @@ class BlackWCfg(BlackCfg):
     class commands(BlackCfg.commands):
         curriculum = True
         max_curriculum = 2.0
-        # Not used by current BlackWEnv.update_command_curriculum(); kept for parent/legacy compatibility.
-        curriculum_threshold = 0.7
-        curriculum_ema_alpha = 0.2
-        curriculum_required_passes = 2
+        
+        # Kept for parent/legacy compatibility; current blackW per-axis curriculum only uses buffer_min.
+        # curriculum_threshold = 0.7
+        # curriculum_ema_alpha = 0.2
+        # curriculum_required_passes = 2
         curriculum_buffer_min = 256
+
         num_commands = 4
         resampling_time = 10.0
-        heading_command = True
+        heading_command = False
         low_speed_x_range = [-1.0, 1.0]
         high_vel_env_fraction = 0.2
-        high_speed_lateral_disable_x_threshold = 1.0
+        high_speed_lateral_disable_x_threshold = 1.5
         xy_norm_stop_threshold = 0.2
         heading_yaw_gain = 0.5
         heading_yaw_clip = 2.0
         x_curriculum_step = 0.2
+        y_curriculum_step = 0.1
+        yaw_curriculum_step = 0.3
         x_curriculum_score_scale = 0.8
+        y_curriculum_score_scale = 0.75
+        yaw_curriculum_score_scale = 0.75
+        max_y_curriculum = 1.0
+        max_yaw_curriculum = 3.0
 
         class ranges:
             lin_vel_x = [-1.0, 1.0]
-            lin_vel_y = [-1.0, 1.0]
-            ang_vel_yaw = [-3.0, 3.0]
+            lin_vel_y = [-0.2, 0.2]
+            ang_vel_yaw = [-0.5, 0.5]
             heading = [-3.14, 3.14]
 
     class domain_rand(BlackCfg.domain_rand):
@@ -186,6 +194,10 @@ class BlackWCfg(BlackCfg):
         randomize_wheel_motor = True
         wheel_motor_strength_range = [0.8, 1.2]
         wheel_vel_ref_scale_range = [0.9, 1.1]
+        randomize_wheel_vel_ref_bias = True
+        wheel_vel_ref_bias_range = [-0.3, 0.3]
+        randomize_wheel_dof_vel_obs_bias = True
+        wheel_dof_vel_obs_bias_range = [-0.5, 0.5]
 
         randomize_wheel_mass = True
         wheel_mass_scale_range = [0.9, 1.1]
@@ -298,10 +310,19 @@ class BlackWCfg(BlackCfg):
             approach_bonus = 0.25
             max_approach_speed = 0.4
 
+        class wheel_obstacle_lift:
+            horizontal_force_threshold = 30.0
+            command_threshold = 0.2
+            target_lift_height = 0.08
+            active_time = 0.25
+            sigma = 0.04
+
         class scales:
             termination = -0.0
-            tracking_lin_vel = 1.5
+            tracking_lin_vel_x = 1.0
+            tracking_lin_vel_y = 0.75
             tracking_ang_vel = 0.75
+            progress = 1.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.5
@@ -310,13 +331,15 @@ class BlackWCfg(BlackCfg):
             stand_still = -0.5
             collision = -1.0
             feet_stumble = -0.1
-            action_rate = -0.05
-            smoothness = -0.01
+            action_rate = -0.08
+            smoothness = -0.015
             torques = -5.0e-4
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05
+            wheel_obstacle_lift = 0.0
 
+            tracking_lin_vel = 0.0
             joint_power = -0.0
             foot_clearance = -0.0
             feet_air_time = 0.0
@@ -328,7 +351,6 @@ class BlackWCfg(BlackCfg):
             all_joint_pos = -0.0
             foot_slip = -0.0
             foot_impact_vel = -0.0
-            progress = 0.0
             raibert = 0.0
 
     class viewer(BlackCfg.viewer):
@@ -427,8 +449,8 @@ class BlackWCfgPPO(BlackCfgPPO):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
         save_interval = 20
-        num_steps_per_env = 64
-        max_iterations = 500
+        num_steps_per_env = 48
+        max_iterations = 1000
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None
