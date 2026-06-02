@@ -398,5 +398,3 @@ class BlackWEnv(BlackEnv):
             torch.norm(self.commands[:, :2], dim=1) > self.cfg.rewards.run_still_cmd_threshold
         )
 
-
-BlackWGo2WRewardEnv = BlackWEnv

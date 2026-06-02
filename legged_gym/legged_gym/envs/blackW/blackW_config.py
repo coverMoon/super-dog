@@ -88,32 +88,34 @@ class BlackWCfg(BlackCfg):
         stuck_grace_s = 1.0
 
     class terrain(BlackCfg.terrain):
-        mesh_type = "plane"
-        horizontal_scale = 0.1
-        vertical_scale = 0.005
-        border_size = 25
+        mesh_type = 'trimesh'  # options: 'plane', 'heightfield', 'trimesh'
+        horizontal_scale = 0.1  # [m]
+        vertical_scale = 0.005  # [m]
+        border_size = 25  # [m]
         curriculum = True
-        static_friction = 0.8
-        dynamic_friction = 0.8
-        restitution = 0.0
+        static_friction = 1.0
+        dynamic_friction = 1.0
+        restitution = 0.
+        # rough terrain only:
         measure_heights = True
         height_measurement_base_offset = 0.5
-        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
         selected = False
         terrain_kwargs = None
         max_init_terrain_level = 5
-        terrain_length = 8.0
-        terrain_width = 8.0
+        terrain_length = 8.
+        terrain_width = 8.
         num_rows = 10
         num_cols = 20
-        # [plane, smooth slope, rough slope, stairs down, stairs up, discrete, ...]
-        terrain_proportions = [0.0, 0.1, 0.1, 0.2, 0.35, 0.25, 0.0, 0.0, 0.0, 0.0]
+        # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯下，楼梯上，乱石，梅花桩，沟壑，木板桥，高墙]
+        terrain_proportions = [0.2, 0.1, 0.1, 0.2, 0.25, 0.15, 0.0, 0.0, 0.0, 0.0]
         slope_treshold = 0.75
 
     class commands(BlackCfg.commands):
         curriculum = True
-        max_curriculum = 1.5
+        max_curriculum = 2.0
+        # Not used by current BlackWEnv.update_command_curriculum(); kept for parent/legacy compatibility.
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
@@ -132,8 +134,8 @@ class BlackWCfg(BlackCfg):
 
         class ranges:
             lin_vel_x = [-1.0, 1.0]
-            lin_vel_y = [-0.6, 0.6]
-            ang_vel_yaw = [-1.0, 1.0]
+            lin_vel_y = [-1.0, 1.0]
+            ang_vel_yaw = [-3.0, 3.0]
             heading = [-3.14, 3.14]
 
     class domain_rand(BlackCfg.domain_rand):
@@ -164,8 +166,8 @@ class BlackWCfg(BlackCfg):
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
 
-        randomize_inertia = False
-        inertia_range = [1.0, 1.0]
+        randomize_inertia = True
+        inertia_range = [0.9, 1.1]
 
         disturbance = True
         disturbance_range = [-30.0, 30.0]
@@ -279,18 +281,19 @@ class BlackWCfg(BlackCfg):
                 stance_gain = 0.5
                 swing_high_penalty_weight = 0.25
 
-        class raibert:
-            nominal_front_x = 0.21
-            nominal_rear_x = -0.21
-            nominal_y = 0.155
+        class raibert(BlackCfg.rewards.raibert):
+            # blackW foothold rewards use the wheel cylinder center rather than the old foot point.
+            nominal_front_x = 0.2055
+            nominal_rear_x = -0.2197
+            nominal_y = 0.1834
             max_linear_offset_x = 0.16
             max_linear_offset_y = 0.06
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.10
+            max_yaw_offset = 0.1
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
-            late_swing_start_latyaw = 0.0
+            late_swing_start_latyaw = 0.1
             touchdown_gain = 0.4
             approach_bonus = 0.25
             max_approach_speed = 0.4
@@ -383,12 +386,42 @@ class BlackWCfgPPO(BlackCfgPPO):
         learning_rate_min = 1e-5
         learning_rate_max = 1e-2
         max_grad_norm = 1.0
-        sym_loss = False
-        obs_permutation = None
-        act_permutation = None
-        sym_action_mask = None
+        # Single-frame actor obs:
+        # commands(3) + base_ang_vel(3) + gravity(3) + dof_pos_err(16) + dof_vel(16) + actions(16).
+        # Runtime DOF groups are FL, FR, RR, RL. Mirror swaps left/right legs, flips lateral/yaw
+        # signed channels, and keeps wheel channels out of the action symmetry loss.
+        sym_loss = True
+        obs_permutation = [
+            0.00001, -1, -2,
+            -3, 4, -5,
+            6, -7, 8,
+            -13, -14, -15, 12,
+            -9, -10, -11, 16,
+            -21, -22, -23, 20,
+            -17, -18, -19, 24,
+            -29, -30, -31, 28,
+            -25, -26, -27, 32,
+            -37, -38, -39, 36,
+            -33, -34, -35, 40,
+            -45, -46, -47, 44,
+            -41, -42, -43, 48,
+            -53, -54, -55, 52,
+            -49, -50, -51, 56,
+        ]
+        act_permutation = [
+            -4, -5, -6, 3,
+            -0.0001, -1, -2, 7,
+            -12, -13, -14, 11,
+            -8, -9, -10, 15,
+        ]
+        sym_action_mask = [
+            1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
+        ]
         frame_stack = 6
-        sym_coef = 0.8
+        sym_coef = 0.6
 
     class runner(BlackCfgPPO.runner):
         policy_class_name = 'HIMActorCritic'
@@ -402,8 +435,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         load_run = -1
         checkpoint = -1
         resume_path = None
-        resume_command_curriculum = 'range'
 
-
-BlackWGo2WRewardCfg = BlackWCfg
-BlackWGo2WRewardCfgPPO = BlackWCfgPPO

@@ -35,13 +35,13 @@ from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 from legged_gym.envs.go1.go1_config import Go1RoughCfg, Go1RoughCfgPPO
 from legged_gym.envs.aliengo.aliengo_config import AlienGoRoughCfg, AlienGoRoughCfgPPO
 from legged_gym.envs.black.black_config import BlackCfg, BlackCfgPPO
-from legged_gym.envs.blackW.blackW_config import BlackWCfg, BlackWCfgPPO, BlackWGo2WRewardCfg, BlackWGo2WRewardCfgPPO
+from legged_gym.envs.blackW.blackW_config import BlackWCfg, BlackWCfgPPO
 from legged_gym.envs.blackW.blackW_legacy_config import BlackWCfg as BlackWLegacyCfg
 from legged_gym.envs.blackW.blackW_legacy_config import BlackWCfgPPO as BlackWLegacyCfgPPO
 from legged_gym.envs.black.black_bridge_config import BlackBridgeCfg, BlackBridgeCfgPPO
 from legged_gym.envs.black_arm.black_arm_config import BlackArmCfg, BlackArmCfgPPO
 from legged_gym.envs.black.black_env import BlackEnv
-from legged_gym.envs.blackW.blackW_env import BlackWEnv, BlackWGo2WRewardEnv
+from legged_gym.envs.blackW.blackW_env import BlackWEnv
 from legged_gym.envs.blackW.blackW_legacy_env import BlackWEnv as BlackWLegacyEnv
 from legged_gym.envs.black.black_bridge_env import BlackBridgeEnv
 from legged_gym.envs.black_arm.black_arm_env import BlackArmEnv
@@ -55,6 +55,6 @@ task_registry.register( "aliengo", LeggedRobot, AlienGoRoughCfg(), AlienGoRoughC
 task_registry.register( "black", BlackEnv, BlackCfg(), BlackCfgPPO() )
 task_registry.register( "blackW", BlackWEnv, BlackWCfg(), BlackWCfgPPO() )
 task_registry.register( "blackW_legacy", BlackWLegacyEnv, BlackWLegacyCfg(), BlackWLegacyCfgPPO() )
-task_registry.register( "blackW_go2w_reward", BlackWGo2WRewardEnv, BlackWGo2WRewardCfg(), BlackWGo2WRewardCfgPPO() )
+task_registry.register( "blackW_go2w_reward", BlackWEnv, BlackWCfg(), BlackWCfgPPO() )
 task_registry.register( "black_bridge", BlackBridgeEnv, BlackBridgeCfg(), BlackBridgeCfgPPO() )
 task_registry.register( "black_arm", BlackArmEnv, BlackArmCfg(), BlackArmCfgPPO() )
