@@ -197,9 +197,9 @@ class Terrain:
                 terrain,
                 height=wall_h,
                 width_options=getattr(self.cfg, "high_wall_width_options", (0.0, 0.10)),
-                num_walls_range=getattr(self.cfg, "high_wall_num_walls_range", (2, 4)),
-                distance_range=getattr(self.cfg, "high_wall_distance_range", (1.2, 3.2)),
-                min_gap=getattr(self.cfg, "high_wall_min_gap", 0.55),
+                num_walls=getattr(self.cfg, "high_wall_num_walls", 3),
+                start_distance=getattr(self.cfg, "high_wall_start_distance", 1.2),
+                spacing=getattr(self.cfg, "high_wall_spacing", 0.8),
             )
         
         return terrain
@@ -287,9 +287,9 @@ def high_wall_terrain(
     width=0.2,
     distance=2.0,
     width_options=None,
-    num_walls_range=None,
-    distance_range=None,
-    min_gap=0.5,
+    num_walls=1,
+    start_distance=None,
+    spacing=0.8,
 ):
     """
     生成高墙地形
@@ -298,9 +298,9 @@ def high_wall_terrain(
     :param width: 墙的厚度 [m]，兼容旧单墙调用
     :param distance: 墙距离地图中心的距离 [m]，兼容旧单墙调用
     :param width_options: 多墙模式下每堵墙可选厚度 [m]；0 表示单行薄墙脊
-    :param num_walls_range: 多墙模式下每块地形的墙数，可为整数或 [min, max]
-    :param distance_range: 多墙模式下每堵墙距离地图中心的采样范围 [m]
-    :param min_gap: 多墙模式下相邻墙最小间距 [m]
+    :param num_walls: 多墙模式下每块地形的墙数
+    :param start_distance: 第一堵墙距离地图中心的距离 [m]
+    :param spacing: 相邻高墙的固定间距 [m]
     """
     h_raw = int(height / terrain.vertical_scale)
     center_x = terrain.length // 2
@@ -309,35 +309,11 @@ def high_wall_terrain(
     if width_options is None:
         wall_specs = [(distance, width)]
     else:
-        if num_walls_range is None:
-            num_walls = 1
-        elif isinstance(num_walls_range, int):
-            num_walls = num_walls_range
-        else:
-            num_walls = np.random.randint(int(num_walls_range[0]), int(num_walls_range[1]) + 1)
-
-        if distance_range is None:
-            distance_range = (distance, distance)
-
-        min_gap_pixels = max(1, int(min_gap / terrain.horizontal_scale))
-        min_dist_pixels = int(distance_range[0] / terrain.horizontal_scale)
-        max_dist_pixels = int(distance_range[1] / terrain.horizontal_scale)
-        candidate_dist_pixels = np.arange(min_dist_pixels, max_dist_pixels + 1)
-        np.random.shuffle(candidate_dist_pixels)
-
-        selected_dist_pixels = []
-        for dist_pixels in candidate_dist_pixels:
-            if all(abs(dist_pixels - prev) >= min_gap_pixels for prev in selected_dist_pixels):
-                selected_dist_pixels.append(dist_pixels)
-                if len(selected_dist_pixels) >= num_walls:
-                    break
-
-        if len(selected_dist_pixels) == 0:
-            selected_dist_pixels = [int(distance / terrain.horizontal_scale)]
-
+        num_walls = max(1, int(num_walls))
+        start_distance = distance if start_distance is None else start_distance
         wall_specs = [
-            (dist_pixels * terrain.horizontal_scale, float(np.random.choice(width_options)))
-            for dist_pixels in selected_dist_pixels
+            (start_distance + wall_idx * spacing, float(width_options[wall_idx % len(width_options)]))
+            for wall_idx in range(num_walls)
         ]
 
     for wall_distance, wall_width in wall_specs:
@@ -345,7 +321,9 @@ def high_wall_terrain(
         if wall_width <= 0.0:
             w_pixels = 1
         else:
-            w_pixels = max(1, int(np.ceil(wall_width / terrain.horizontal_scale)))
+            # Heightfield values live on vertices. One raised row is a ridge with nearly zero
+            # plateau width, so a 0.10m wall at 0.10m resolution needs two raised rows.
+            w_pixels = max(2, int(np.ceil(wall_width / terrain.horizontal_scale)) + 1)
 
         wall_start = center_x + dist_pixels
         wall_end = wall_start + w_pixels
@@ -355,9 +333,6 @@ def high_wall_terrain(
 
         if wall_end > wall_start:
             terrain.height_field_raw[wall_start:wall_end, :] = h_raw
-
-        if wall_width <= 0.0 and wall_start < terrain.length:
-            terrain.height_field_raw[wall_start, :] = h_raw
 
     return terrain
 
