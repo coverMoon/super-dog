@@ -324,9 +324,15 @@ class BlackWCfg(BlackCfg):
         class wheel_obstacle_lift:
             horizontal_force_threshold = 25.0
             command_threshold = 0.2
-            target_lift_height = 0.03
+            obstacle_height_threshold = 0.035
+            clearance_margin = 0.05
+            min_lift_height = 0.05
+            min_progress_span = 0.03
             active_time = 0.8
-            sigma = 0.04
+            progress_weight = 0.7
+            target_sigma = 0.05
+            forward_offsets = [0.04, 0.08, 0.12, 0.16]
+            lateral_offsets = [-0.03, 0.0, 0.03]
 
         class scales:
             termination = -0.0
@@ -348,8 +354,8 @@ class BlackWCfg(BlackCfg):
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05
-            wheel_obstacle_lift = 1.0
 
+            wheel_obstacle_lift = 1.0
             tracking_lin_vel = 0.0
             joint_power = -0.0
             foot_clearance = -0.0

@@ -4,7 +4,7 @@ import torch
 from isaacgym.torch_utils import quat_apply, torch_rand_float
 
 from legged_gym.envs.black.black_env import BlackEnv
-from legged_gym.utils.math import wrap_to_pi
+from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
 
 
 class BlackWEnv(BlackEnv):
@@ -64,6 +64,24 @@ class BlackWEnv(BlackEnv):
             requires_grad=False,
         )
         self.wheel_obstacle_lift_target_z = torch.zeros_like(self.wheel_obstacle_lift_timer)
+        self.wheel_obstacle_lift_start_z = torch.zeros_like(self.wheel_obstacle_lift_timer)
+
+        cfg = self.cfg.rewards.wheel_obstacle_lift
+        forward_offsets = torch.tensor(cfg.forward_offsets, dtype=torch.float, device=self.device, requires_grad=False)
+        lateral_offsets = torch.tensor(cfg.lateral_offsets, dtype=torch.float, device=self.device, requires_grad=False)
+        grid_x, grid_y = torch.meshgrid(forward_offsets, lateral_offsets)
+        local_offsets = torch.zeros(
+            1,
+            len(self.wheel_body_indices),
+            grid_x.numel(),
+            3,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        local_offsets[:, :, :, 0] = grid_x.flatten()
+        local_offsets[:, :, :, 1] = grid_y.flatten()
+        self.wheel_obstacle_lift_local_offsets = local_offsets
 
     def _init_blackW_command_curriculum_buffers(self):
         self.cmd_curr_axis_buffers = {
@@ -148,6 +166,7 @@ class BlackWEnv(BlackEnv):
         if len(env_ids) > 0 and hasattr(self, "wheel_obstacle_lift_timer"):
             self.wheel_obstacle_lift_timer[env_ids] = 0.0
             self.wheel_obstacle_lift_target_z[env_ids] = 0.0
+            self.wheel_obstacle_lift_start_z[env_ids] = 0.0
         self._resample_wheel_randomization(env_ids)
 
     def _resolve_wheel_forward_sign(self, wheel_names):
@@ -641,16 +660,26 @@ class BlackWEnv(BlackEnv):
     def _reward_wheel_obstacle_lift(self):
         cfg = self.cfg.rewards.wheel_obstacle_lift
         wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
+        wheel_pos = wheel_states[:, :, :3]
         wheel_z = wheel_states[:, :, 2]
         wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
         horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
         contact_gate = horizontal_force > cfg.horizontal_force_threshold
         command_gate = torch.norm(self.commands[:, :2], dim=1, keepdim=True) > cfg.command_threshold
-        trigger = contact_gate & command_gate
+        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
+        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
+        obstacle_rel_height = obstacle_height - ground_height
+        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+        trigger = contact_gate & command_gate & obstacle_gate
         active = self.wheel_obstacle_lift_timer > 0.0
         new_trigger = trigger & ~active
 
-        new_target = wheel_z.detach() + cfg.target_lift_height
+        new_start = wheel_z.detach()
+        new_target = torch.maximum(
+            obstacle_height.detach() + cfg.clearance_margin,
+            new_start + cfg.min_lift_height,
+        )
+        self.wheel_obstacle_lift_start_z = torch.where(new_trigger, new_start, self.wheel_obstacle_lift_start_z)
         self.wheel_obstacle_lift_target_z = torch.where(new_trigger, new_target, self.wheel_obstacle_lift_target_z)
         active_time = max(cfg.active_time, self.dt)
         self.wheel_obstacle_lift_timer = torch.where(
@@ -660,10 +689,51 @@ class BlackWEnv(BlackEnv):
         )
 
         active = self.wheel_obstacle_lift_timer > 0.0
+        lift_span = torch.clamp(
+            self.wheel_obstacle_lift_target_z - self.wheel_obstacle_lift_start_z,
+            min=cfg.min_progress_span,
+        )
+        lift_progress = torch.clamp(
+            (wheel_z - self.wheel_obstacle_lift_start_z) / lift_span,
+            min=0.0,
+            max=1.0,
+        )
         height_error = torch.clamp(self.wheel_obstacle_lift_target_z - wheel_z, min=0.0)
-        sigma = max(cfg.sigma, 1e-6)
-        lift_reward = torch.exp(-torch.square(height_error) / sigma)
+        sigma = max(cfg.target_sigma, 1e-6)
+        target_reward = torch.exp(-torch.square(height_error / sigma))
+        lift_reward = cfg.progress_weight * lift_progress + (1.0 - cfg.progress_weight) * target_reward
         return torch.sum(lift_reward * active.float() * command_gate.float(), dim=1)
+
+    def _sample_wheel_front_obstacle_heights(self, wheel_pos):
+        local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
+        flat_offsets = local_offsets.reshape(self.num_envs, -1, 3)
+        world_offsets = quat_apply_yaw(self.base_quat.repeat(1, flat_offsets.shape[1]), flat_offsets)
+        sample_points = (
+            wheel_pos[:, :, None, :2]
+            + world_offsets.view(self.num_envs, len(self.wheel_body_indices), -1, 3)[:, :, :, :2]
+        )
+        heights = self._sample_terrain_heights_at_points(sample_points.view(self.num_envs, -1, 2), reduce="max")
+        return torch.max(heights.view(self.num_envs, len(self.wheel_body_indices), -1), dim=2).values
+
+    def _sample_terrain_heights_at_points(self, points_xy, reduce="min"):
+        if self.cfg.terrain.mesh_type == "plane":
+            return torch.zeros(points_xy.shape[:2], dtype=torch.float, device=self.device, requires_grad=False)
+        elif self.cfg.terrain.mesh_type == "none":
+            raise NameError("Can't measure height with terrain mesh type 'none'")
+
+        points = points_xy + self.terrain.cfg.border_size
+        points = (points / self.terrain.cfg.horizontal_scale).long()
+        px = torch.clip(points[:, :, 0].reshape(-1), 0, self.height_samples.shape[0] - 2)
+        py = torch.clip(points[:, :, 1].reshape(-1), 0, self.height_samples.shape[1] - 2)
+
+        heights1 = self.height_samples[px, py]
+        heights2 = self.height_samples[px + 1, py]
+        heights3 = self.height_samples[px, py + 1]
+        if reduce == "max":
+            heights = torch.max(torch.max(heights1, heights2), heights3)
+        else:
+            heights = torch.min(torch.min(heights1, heights2), heights3)
+        return heights.view(points_xy.shape[:2]) * self.terrain.cfg.vertical_scale
 
     def _reward_action_rate(self):
         return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
