@@ -193,7 +193,14 @@ class Terrain:
             )
         else:
             wall_h = 0.12 + 0.34 * difficulty  # 0.12m 到 0.46m
-            high_wall_terrain(terrain, height=wall_h, width=0.3, distance=2.0)
+            high_wall_terrain(
+                terrain,
+                height=wall_h,
+                width_options=getattr(self.cfg, "high_wall_width_options", (0.0, 0.10)),
+                num_walls_range=getattr(self.cfg, "high_wall_num_walls_range", (2, 4)),
+                distance_range=getattr(self.cfg, "high_wall_distance_range", (1.2, 3.2)),
+                min_gap=getattr(self.cfg, "high_wall_min_gap", 0.55),
+            )
         
         return terrain
 
@@ -274,39 +281,84 @@ def broken_bridge_terrain(terrain, gap_size, platform_length, bridge_width, dept
         # 移动到下一段（跳过缺口）
         current_x += platform_pixels + gap_pixels
 
-def high_wall_terrain(terrain, height=1.0, width=0.2, distance=2.0):
+def high_wall_terrain(
+    terrain,
+    height=1.0,
+    width=0.2,
+    distance=2.0,
+    width_options=None,
+    num_walls_range=None,
+    distance_range=None,
+    min_gap=0.5,
+):
     """
     生成高墙地形
     :param terrain: 地形对象
     :param height: 墙的高度 [m]
-    :param width: 墙的厚度 [m] (建议至少 0.2m 以免漏采样)
-    :param distance: 墙距离地图中心的距离 [m] (机器人通常出生在中心)
+    :param width: 墙的厚度 [m]，兼容旧单墙调用
+    :param distance: 墙距离地图中心的距离 [m]，兼容旧单墙调用
+    :param width_options: 多墙模式下每堵墙可选厚度 [m]；0 表示单行薄墙脊
+    :param num_walls_range: 多墙模式下每块地形的墙数，可为整数或 [min, max]
+    :param distance_range: 多墙模式下每堵墙距离地图中心的采样范围 [m]
+    :param min_gap: 多墙模式下相邻墙最小间距 [m]
     """
-    # 1. 将物理尺寸转换为像素网格坐标
     h_raw = int(height / terrain.vertical_scale)
-    w_pixels = int(width / terrain.horizontal_scale)
-    dist_pixels = int(distance / terrain.horizontal_scale)
-    
-    # 2. 获取地图中心点 (像素坐标)
     center_x = terrain.length // 2
-    
-    # 3. 计算墙在 X 轴上的起始和结束索引
-    # 假设机器人向 +x 方向移动
-    wall_start = center_x + dist_pixels
-    wall_end = wall_start + w_pixels
-    
-    # 4. 边界裁剪 (防止索引越界)
-    wall_start = np.clip(wall_start, 0, terrain.length)
-    wall_end = np.clip(wall_end, 0, terrain.length)
-    
-    # 5. 修改高度图
-    # 先将整个区域设为平地 (0)
     terrain.height_field_raw[:, :] = 0
-    
-    # 将墙体区域设为指定高度
-    if wall_end > wall_start:
-        terrain.height_field_raw[wall_start:wall_end, :] = h_raw
-        
+
+    if width_options is None:
+        wall_specs = [(distance, width)]
+    else:
+        if num_walls_range is None:
+            num_walls = 1
+        elif isinstance(num_walls_range, int):
+            num_walls = num_walls_range
+        else:
+            num_walls = np.random.randint(int(num_walls_range[0]), int(num_walls_range[1]) + 1)
+
+        if distance_range is None:
+            distance_range = (distance, distance)
+
+        min_gap_pixels = max(1, int(min_gap / terrain.horizontal_scale))
+        min_dist_pixels = int(distance_range[0] / terrain.horizontal_scale)
+        max_dist_pixels = int(distance_range[1] / terrain.horizontal_scale)
+        candidate_dist_pixels = np.arange(min_dist_pixels, max_dist_pixels + 1)
+        np.random.shuffle(candidate_dist_pixels)
+
+        selected_dist_pixels = []
+        for dist_pixels in candidate_dist_pixels:
+            if all(abs(dist_pixels - prev) >= min_gap_pixels for prev in selected_dist_pixels):
+                selected_dist_pixels.append(dist_pixels)
+                if len(selected_dist_pixels) >= num_walls:
+                    break
+
+        if len(selected_dist_pixels) == 0:
+            selected_dist_pixels = [int(distance / terrain.horizontal_scale)]
+
+        wall_specs = [
+            (dist_pixels * terrain.horizontal_scale, float(np.random.choice(width_options)))
+            for dist_pixels in selected_dist_pixels
+        ]
+
+    for wall_distance, wall_width in wall_specs:
+        dist_pixels = int(wall_distance / terrain.horizontal_scale)
+        if wall_width <= 0.0:
+            w_pixels = 1
+        else:
+            w_pixels = max(1, int(np.ceil(wall_width / terrain.horizontal_scale)))
+
+        wall_start = center_x + dist_pixels
+        wall_end = wall_start + w_pixels
+
+        wall_start = np.clip(wall_start, 0, terrain.length)
+        wall_end = np.clip(wall_end, 0, terrain.length)
+
+        if wall_end > wall_start:
+            terrain.height_field_raw[wall_start:wall_end, :] = h_raw
+
+        if wall_width <= 0.0 and wall_start < terrain.length:
+            terrain.height_field_raw[wall_start, :] = h_raw
+
     return terrain
 
 def plank_bridge_terrain(
