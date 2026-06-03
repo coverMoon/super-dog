@@ -140,6 +140,15 @@ class BlackWCfg(BlackCfg):
         max_y_curriculum = 1.0
         max_yaw_curriculum = 3.0
 
+        class terrain_command_sampling:
+            enabled = True
+            # 地形类型索引：0=平地，1=光滑斜坡，2=崎岖斜坡，3=楼梯上，4=楼梯下，
+            # 5=乱石，6=梅花桩，7=沟壑，8=木板桥，9=高墙。
+            difficult_terrain_types = [3, 4, 6, 7, 8, 9]
+            # 简单地形不单独设置，直接跟随全局 command_ranges。
+            difficult_lin_vel_y = [-0.5, 0.5]
+            difficult_ang_vel_yaw = [-0.5, 0.5]
+
         class ranges:
             lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-0.2, 0.2]
@@ -328,7 +337,7 @@ class BlackWCfg(BlackCfg):
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.5
-            base_height = -6.0
+            base_height = -5.0
             hip_default = -0.6
             stand_still = -0.5
             collision = -1.0
@@ -339,7 +348,7 @@ class BlackWCfg(BlackCfg):
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05
-            wheel_obstacle_lift = 0.5
+            wheel_obstacle_lift = 1.0
 
             tracking_lin_vel = 0.0
             joint_power = -0.0
@@ -451,8 +460,8 @@ class BlackWCfgPPO(BlackCfgPPO):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
         save_interval = 20
-        num_steps_per_env = 48
-        max_iterations = 1000
+        num_steps_per_env = 64
+        max_iterations = 5000
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None

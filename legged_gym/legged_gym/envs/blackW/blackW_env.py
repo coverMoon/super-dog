@@ -321,6 +321,44 @@ class BlackWEnv(BlackEnv):
             self.privileged_obs_buf[:, :-self.num_one_step_privileged_obs],
         ), dim=-1)[env_ids]
 
+    def _get_terrain_type_ids(self, env_ids=None):
+        num_envs = len(env_ids) if env_ids is not None else self.num_envs
+        if not (self.cfg.terrain.curriculum and hasattr(self, "terrain_types")):
+            return torch.full((num_envs,), -1, dtype=torch.long, device=self.device)
+
+        proportions = np.cumsum(self.cfg.terrain.terrain_proportions)
+        if len(proportions) == 0 or self.cfg.terrain.num_cols <= 0:
+            return torch.full((num_envs,), -1, dtype=torch.long, device=self.device)
+
+        terrain_types = self.terrain_types if env_ids is None else self.terrain_types[env_ids]
+        terrain_choice = terrain_types.float() / self.cfg.terrain.num_cols + 0.001
+        proportions_tensor = torch.tensor(proportions, dtype=torch.float, device=self.device)
+        return torch.bucketize(terrain_choice, proportions_tensor)
+
+    def _get_high_wall_env_mask(self, env_ids=None):
+        return self._get_terrain_type_ids(env_ids) == 9
+
+    def _get_difficult_command_env_mask(self, env_ids=None):
+        num_envs = len(env_ids) if env_ids is not None else self.num_envs
+        sampling_cfg = getattr(self.cfg.commands, "terrain_command_sampling", None)
+        if sampling_cfg is None or not getattr(sampling_cfg, "enabled", False):
+            return torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+
+        terrain_type_ids = self._get_terrain_type_ids(env_ids)
+        difficult_mask = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+        for terrain_type in getattr(sampling_cfg, "difficult_terrain_types", []):
+            difficult_mask |= terrain_type_ids == int(terrain_type)
+        return difficult_mask
+
+    def _get_difficult_command_range(self, range_name):
+        sampling_cfg = getattr(self.cfg.commands, "terrain_command_sampling", None)
+        if sampling_cfg is None or not getattr(sampling_cfg, "enabled", False):
+            return None
+        value = getattr(sampling_cfg, range_name, None)
+        if value is None or len(value) != 2:
+            return None
+        return float(value[0]), float(value[1])
+
     def _resample_commands(self, env_ids):
         if len(env_ids) == 0:
             return
@@ -364,6 +402,21 @@ class BlackWEnv(BlackEnv):
             torch.norm(self.commands[high_vel_env_ids, 0:1], dim=1)
             < self.cfg.commands.high_speed_lateral_disable_x_threshold
         ).unsqueeze(1)
+
+        difficult_env_ids = env_ids[self._get_difficult_command_env_mask(env_ids)]
+        if len(difficult_env_ids) > 0:
+            y_range = self._get_difficult_command_range("difficult_lin_vel_y")
+            if y_range is not None:
+                self.commands[difficult_env_ids, 1] = torch_rand_float(
+                    y_range[0], y_range[1], (len(difficult_env_ids), 1), device=self.device
+                ).squeeze(1)
+            if not self.cfg.commands.heading_command:
+                yaw_range = self._get_difficult_command_range("difficult_ang_vel_yaw")
+                if yaw_range is not None:
+                    self.commands[difficult_env_ids, 2] = torch_rand_float(
+                        yaw_range[0], yaw_range[1], (len(difficult_env_ids), 1), device=self.device
+                    ).squeeze(1)
+
         self.commands[env_ids, :2] *= (
             torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.xy_norm_stop_threshold
         ).unsqueeze(1)
@@ -380,6 +433,12 @@ class BlackWEnv(BlackEnv):
                 -self.cfg.commands.heading_yaw_clip,
                 self.cfg.commands.heading_yaw_clip,
             )
+            yaw_range = self._get_difficult_command_range("difficult_ang_vel_yaw")
+            if yaw_range is not None:
+                difficult_envs = self._get_difficult_command_env_mask()
+                self.commands[difficult_envs, 2] = torch.clamp(
+                    self.commands[difficult_envs, 2], yaw_range[0], yaw_range[1]
+                )
 
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
@@ -444,10 +503,11 @@ class BlackWEnv(BlackEnv):
         high_cutoff = self.num_envs * high_fraction
         low_vel_env_ids = env_ids[env_ids >= high_cutoff]
         high_vel_env_ids = env_ids[env_ids < high_cutoff]
+        simple_command_env_ids = env_ids[~self._get_difficult_command_env_mask(env_ids)]
 
         self._append_command_curriculum_samples("x_low", "tracking_lin_vel_x", low_vel_env_ids, 0)
         self._append_command_curriculum_samples("x_high", "tracking_lin_vel_x", high_vel_env_ids, 0)
-        self._append_command_curriculum_samples("y", "tracking_lin_vel_y", env_ids, 1)
+        self._append_command_curriculum_samples("y", "tracking_lin_vel_y", simple_command_env_ids, 1)
 
         buffer_min = max(1, int(getattr(self.cfg.commands, "curriculum_buffer_min", 256)))
         x_high_min = max(4, int(round(buffer_min * high_fraction)))
@@ -484,7 +544,7 @@ class BlackWEnv(BlackEnv):
             self._clear_command_curriculum_buffer("y")
 
         if not self.cfg.commands.heading_command:
-            self._append_command_curriculum_samples("yaw", "tracking_ang_vel", env_ids, 2)
+            self._append_command_curriculum_samples("yaw", "tracking_ang_vel", simple_command_env_ids, 2)
             if self._command_curriculum_buffer_count("yaw") >= buffer_min:
                 yaw_ratio = self._command_curriculum_buffer_mean("yaw")
                 yaw_threshold = self.cfg.commands.yaw_curriculum_score_scale
@@ -535,18 +595,13 @@ class BlackWEnv(BlackEnv):
 
     def _reward_base_height(self):
         terrain_height = torch.mean(self._get_under_body_height_samples(), dim=1)
-        proportions = np.cumsum(self.cfg.terrain.terrain_proportions)
-        if (
-            self.cfg.terrain.curriculum
-            and hasattr(self, "terrain_types")
-            and len(proportions) > 8
-            and self.cfg.terrain.num_cols > 0
-        ):
-            terrain_choice = self.terrain_types.float() / self.cfg.terrain.num_cols + 0.001
-            high_wall_envs = terrain_choice >= proportions[8]
-            terrain_height = torch.where(high_wall_envs, torch.zeros_like(terrain_height), terrain_height)
+        high_wall_envs = self._get_high_wall_env_mask()
+        terrain_height = torch.where(high_wall_envs, torch.zeros_like(terrain_height), terrain_height)
         base_height = self.root_states[:, 2] - terrain_height
-        return torch.abs(base_height - self.cfg.rewards.base_height_target)
+        height_error = torch.abs(base_height - self.cfg.rewards.base_height_target)
+        high_wall_base_height_scale = 0.25
+        height_error = torch.where(high_wall_envs, height_error * high_wall_base_height_scale, height_error)
+        return height_error
 
     def _reward_hip_default(self):
         return torch.sum(
