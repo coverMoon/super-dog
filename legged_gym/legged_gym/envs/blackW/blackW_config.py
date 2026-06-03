@@ -3,7 +3,7 @@ from legged_gym.envs.black.black_config import BlackCfg, BlackCfgPPO
 
 class BlackWCfg(BlackCfg):
     class init_state(BlackCfg.init_state):
-        pos = [0.0, 0.0, 0.55]
+        pos = [0.0, 0.0, 0.60]
         rot = [0.0, 0.0, 0.0, 1.0]
         lin_vel = [0.0, 0.0, 0.0]
         ang_vel = [0.0, 0.0, 0.0]
@@ -109,12 +109,11 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯下，楼梯上，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.2, 0.1, 0.1, 0.2, 0.25, 0.15, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.2, 0.25, 0.1, 0.0, 0.0, 0.0, 0.15]
         slope_treshold = 0.75
 
     class commands(BlackCfg.commands):
         curriculum = True
-        max_curriculum = 2.0
         
         # Kept for parent/legacy compatibility; current blackW per-axis curriculum only uses buffer_min.
         # curriculum_threshold = 0.7
@@ -136,7 +135,8 @@ class BlackWCfg(BlackCfg):
         yaw_curriculum_step = 0.3
         x_curriculum_score_scale = 0.8
         y_curriculum_score_scale = 0.75
-        yaw_curriculum_score_scale = 0.75
+        yaw_curriculum_score_scale = 0.6
+        max_curriculum = 2.0
         max_y_curriculum = 1.0
         max_yaw_curriculum = 3.0
 
@@ -148,28 +148,28 @@ class BlackWCfg(BlackCfg):
 
     class domain_rand(BlackCfg.domain_rand):
         randomize_payload_mass = True
-        payload_mass_range = [-1, 2]
+        payload_mass_range = [-2, 3]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.05, 0.05]
+        com_displacement_range = [-0.08, 0.08]
 
-        randomize_link_mass = False
+        randomize_link_mass = True
         link_mass_range = [0.9, 1.1]
 
         randomize_friction = True
         friction_range = [0.25, 1.25]
 
-        randomize_restitution = False
-        restitution_range = [0.0, 1.0]
+        randomize_restitution = True
+        restitution_range = [0.0, 0.1]
 
         randomize_motor_strength = True
-        motor_strength_range = [0.9, 1.1]
+        motor_strength_range = [0.8, 1.2]
 
         randomize_kp = True
-        kp_range = [0.9, 1.1]
+        kp_range = [0.85, 1.15]
 
         randomize_kd = True
-        kd_range = [0.9, 1.1]
+        kd_range = [0.85, 1.15]
 
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
@@ -189,13 +189,15 @@ class BlackWCfg(BlackCfg):
         lag_timesteps = 3
 
         randomize_wheel_delay = True
-        wheel_lag_timesteps = 3
+        wheel_lag_timesteps = 4
 
         randomize_wheel_motor = True
         wheel_motor_strength_range = [0.8, 1.2]
         wheel_vel_ref_scale_range = [0.9, 1.1]
+
         randomize_wheel_vel_ref_bias = True
         wheel_vel_ref_bias_range = [-0.3, 0.3]
+
         randomize_wheel_dof_vel_obs_bias = True
         wheel_dof_vel_obs_bias_range = [-0.5, 0.5]
 
@@ -337,7 +339,7 @@ class BlackWCfg(BlackCfg):
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05
-            wheel_obstacle_lift = 0.0
+            wheel_obstacle_lift = 0.5
 
             tracking_lin_vel = 0.0
             joint_power = -0.0
@@ -450,7 +452,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         algorithm_class_name = 'HIMPPO'
         save_interval = 20
         num_steps_per_env = 64
-        max_iterations = 5000
+        max_iterations = 2000
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None
