@@ -26,6 +26,13 @@ class BlackWEnv(BlackEnv):
         )
         self.wheel_vel_ref_biases = torch.zeros_like(self.wheel_vel_ref_scales)
         self.wheel_dof_vel_obs_biases = torch.zeros_like(self.wheel_vel_ref_scales)
+        self.hip_motor_strength_factors = torch.ones(
+            self.num_envs,
+            len(self.hip_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
 
     def _resample_wheel_randomization(self, env_ids):
         if len(env_ids) == 0 or not hasattr(self, "wheel_vel_ref_scales"):
@@ -54,6 +61,14 @@ class BlackWEnv(BlackEnv):
             )
         else:
             self.wheel_dof_vel_obs_biases[env_ids] = 0.0
+
+        if getattr(self.cfg.domain_rand, "randomize_hip_motor_strength", False):
+            strength_range = getattr(self.cfg.domain_rand, "hip_motor_strength_range", [1.0, 1.0])
+            self.hip_motor_strength_factors[env_ids] = torch_rand_float(
+                strength_range[0], strength_range[1], (len(env_ids), len(self.hip_indices)), device=self.device
+            )
+        else:
+            self.hip_motor_strength_factors[env_ids] = 1.0
 
     def _init_blackW_obstacle_lift_buffers(self):
         self.wheel_obstacle_lift_timer = torch.zeros(
@@ -169,6 +184,16 @@ class BlackWEnv(BlackEnv):
             self.wheel_obstacle_lift_start_z[env_ids] = 0.0
         self._resample_wheel_randomization(env_ids)
 
+    def _process_dof_props(self, props, env_id):
+        props = super()._process_dof_props(props, env_id).copy()
+        if getattr(self.cfg.domain_rand, "randomize_hip_damping", False):
+            damping_range = getattr(self.cfg.domain_rand, "hip_damping_scale_range", [1.0, 1.0])
+            hip_dof_ids = [i for i, name in enumerate(self.dof_names) if "hip_joint" in name]
+            if len(hip_dof_ids) > 0:
+                damping_scale = np.random.uniform(damping_range[0], damping_range[1], size=len(hip_dof_ids))
+                props["damping"][hip_dof_ids] *= damping_scale
+        return props
+
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign
         if isinstance(cfg_sign, dict):
@@ -241,6 +266,8 @@ class BlackWEnv(BlackEnv):
             raise NameError(f"Unknown controller type: {self.cfg.control.control_type}")
 
         torques = torques * self.motor_strength_factors
+        if hasattr(self, "hip_motor_strength_factors"):
+            torques[:, self.hip_indices] *= self.hip_motor_strength_factors
         friction_torque = (
             self.cfg.control.motor_friction_coulomb
             * torch.tanh(self.cfg.control.motor_friction_velocity_scale * self.dof_vel)
@@ -611,6 +638,9 @@ class BlackWEnv(BlackEnv):
 
     def _reward_orientation(self):
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+
+    def _reward_roll_orientation(self):
+        return torch.square(self.projected_gravity[:, 1])
 
     def _reward_base_height(self):
         terrain_height = torch.mean(self._get_under_body_height_samples(), dim=1)

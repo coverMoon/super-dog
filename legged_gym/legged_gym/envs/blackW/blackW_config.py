@@ -174,6 +174,12 @@ class BlackWCfg(BlackCfg):
         randomize_motor_strength = True
         motor_strength_range = [0.9, 1.1]
 
+        randomize_hip_motor_strength = True
+        hip_motor_strength_range = [0.8, 1.05]
+
+        randomize_hip_damping = True
+        hip_damping_scale_range = [0.8, 1.5]
+
         randomize_kp = True
         kp_range = [0.9, 1.1]
 
@@ -343,6 +349,7 @@ class BlackWCfg(BlackCfg):
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.5
+            roll_orientation = -0.5
             base_height = -5.0
             hip_default = -0.6
             stand_still = -0.5
