@@ -132,7 +132,7 @@ class BlackWCfg(BlackCfg):
         heading_yaw_clip = 2.0
         x_curriculum_step = 0.2
         y_curriculum_step = 0.1
-        yaw_curriculum_step = 0.3
+        yaw_curriculum_step = 0.1
         x_curriculum_score_scale = 0.8
         y_curriculum_score_scale = 0.75
         yaw_curriculum_score_scale = 0.6
@@ -143,15 +143,15 @@ class BlackWCfg(BlackCfg):
         class ranges:
             lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-0.2, 0.2]
-            ang_vel_yaw = [-0.5, 0.5]
+            ang_vel_yaw = [-0.8, 0.8]
             heading = [-3.14, 3.14]
 
     class domain_rand(BlackCfg.domain_rand):
         randomize_payload_mass = True
-        payload_mass_range = [-2, 3]
+        payload_mass_range = [-1, 2]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.08, 0.08]
+        com_displacement_range = [-0.05, 0.05]
 
         randomize_link_mass = True
         link_mass_range = [0.9, 1.1]
@@ -163,13 +163,13 @@ class BlackWCfg(BlackCfg):
         restitution_range = [0.0, 0.1]
 
         randomize_motor_strength = True
-        motor_strength_range = [0.8, 1.2]
+        motor_strength_range = [0.9, 1.1]
 
         randomize_kp = True
-        kp_range = [0.85, 1.15]
+        kp_range = [0.9, 1.1]
 
         randomize_kd = True
-        kd_range = [0.85, 1.15]
+        kd_range = [0.9, 1.1]
 
         randomize_initial_joint_pos = True
         initial_joint_pos_range = [0.5, 1.5]
@@ -315,21 +315,21 @@ class BlackWCfg(BlackCfg):
         class wheel_obstacle_lift:
             horizontal_force_threshold = 25.0
             command_threshold = 0.2
-            target_lift_height = 0.08
-            active_time = 0.35
+            target_lift_height = 0.03
+            active_time = 0.8
             sigma = 0.04
 
         class scales:
             termination = -0.0
-            tracking_lin_vel_x = 1.0
-            tracking_lin_vel_y = 0.75
-            tracking_ang_vel = 0.75
+            tracking_lin_vel_x = 1.5
+            tracking_lin_vel_y = 1.5
+            tracking_ang_vel = 1.25
             progress = 1.0
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.5
-            base_height = -10.0
-            hip_default = -0.8
+            base_height = -6.0
+            hip_default = -0.6
             stand_still = -0.5
             collision = -1.0
             feet_stumble = -0.1
@@ -451,8 +451,8 @@ class BlackWCfgPPO(BlackCfgPPO):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
         save_interval = 20
-        num_steps_per_env = 64
-        max_iterations = 2000
+        num_steps_per_env = 48
+        max_iterations = 1000
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None

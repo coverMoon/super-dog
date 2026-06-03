@@ -534,8 +534,19 @@ class BlackWEnv(BlackEnv):
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
     def _reward_base_height(self):
-        base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        return torch.square(base_height - self.cfg.rewards.base_height_target)
+        terrain_height = torch.mean(self._get_under_body_height_samples(), dim=1)
+        proportions = np.cumsum(self.cfg.terrain.terrain_proportions)
+        if (
+            self.cfg.terrain.curriculum
+            and hasattr(self, "terrain_types")
+            and len(proportions) > 8
+            and self.cfg.terrain.num_cols > 0
+        ):
+            terrain_choice = self.terrain_types.float() / self.cfg.terrain.num_cols + 0.001
+            high_wall_envs = terrain_choice >= proportions[8]
+            terrain_height = torch.where(high_wall_envs, torch.zeros_like(terrain_height), terrain_height)
+        base_height = self.root_states[:, 2] - terrain_height
+        return torch.abs(base_height - self.cfg.rewards.base_height_target)
 
     def _reward_hip_default(self):
         return torch.sum(
