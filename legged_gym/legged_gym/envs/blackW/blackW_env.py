@@ -732,7 +732,15 @@ class BlackWEnv(BlackEnv):
         sigma = max(cfg.target_sigma, 1e-6)
         target_reward = torch.exp(-torch.square(height_error / sigma))
         lift_reward = cfg.progress_weight * lift_progress + (1.0 - cfg.progress_weight) * target_reward
-        return torch.sum(lift_reward * active.float() * command_gate.float(), dim=1)
+        # Down-stair terrain rewards controlled lowering rather than lifting; avoid rewarding turn-back/lift behavior.
+        down_stairs_lift_scale = 0.0
+        down_stairs_envs = self._get_terrain_type_ids() == 4
+        terrain_scale = torch.where(
+            down_stairs_envs,
+            torch.full_like(self.wheel_obstacle_lift_timer[:, 0], down_stairs_lift_scale),
+            torch.ones_like(self.wheel_obstacle_lift_timer[:, 0]),
+        ).unsqueeze(1)
+        return torch.sum(lift_reward * active.float() * command_gate.float() * terrain_scale, dim=1)
 
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)

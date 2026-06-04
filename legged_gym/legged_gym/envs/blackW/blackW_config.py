@@ -123,13 +123,13 @@ class BlackWCfg(BlackCfg):
 
         num_commands = 4
         resampling_time = 10.0
-        heading_command = False
+        heading_command = True
         low_speed_x_range = [-1.0, 1.0]
         high_vel_env_fraction = 0.2
         high_speed_lateral_disable_x_threshold = 1.5
         xy_norm_stop_threshold = 0.2
         heading_yaw_gain = 0.5
-        heading_yaw_clip = 2.0
+        heading_yaw_clip = 3.0
         x_curriculum_step = 0.2
         y_curriculum_step = 0.1
         yaw_curriculum_step = 0.1
@@ -355,14 +355,14 @@ class BlackWCfg(BlackCfg):
             stand_still = -0.5
             collision = -1.0
             feet_stumble = -0.1
-            action_rate = -0.08
-            smoothness = -0.015
-            torques = -5.0e-4
+            action_rate = -0.1
+            smoothness = -0.02
+            torques = -6.0e-4
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05
 
-            wheel_obstacle_lift = 1.0
+            wheel_obstacle_lift = 1.2
             tracking_lin_vel = 0.0
             joint_power = -0.0
             foot_clearance = -0.0
@@ -472,7 +472,7 @@ class BlackWCfgPPO(BlackCfgPPO):
     class runner(BlackCfgPPO.runner):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
-        save_interval = 20
+        save_interval = 50
         num_steps_per_env = 64
         max_iterations = 5000
         experiment_name = "rough_blackW_dog"
