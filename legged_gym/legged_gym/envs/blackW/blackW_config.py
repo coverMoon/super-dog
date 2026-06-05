@@ -124,6 +124,7 @@ class BlackWCfg(BlackCfg):
         num_commands = 4
         resampling_time = 10.0
         heading_command = True
+        heading_command_difficult_only = True
         low_speed_x_range = [-1.0, 1.0]
         high_vel_env_fraction = 0.2
         high_speed_lateral_disable_x_threshold = 1.5
@@ -355,9 +356,9 @@ class BlackWCfg(BlackCfg):
             stand_still = -0.5
             collision = -1.0
             feet_stumble = -0.1
-            action_rate = -0.1
-            smoothness = -0.02
-            torques = -6.0e-4
+            action_rate = -0.06
+            smoothness = -0.012
+            torques = -6.2e-4
             dof_vel = -1e-7
             dof_acc = -1e-7
             run_still = -0.05

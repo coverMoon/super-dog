@@ -405,6 +405,14 @@ class BlackWEnv(BlackEnv):
             return None
         return float(value[0]), float(value[1])
 
+    def _get_heading_command_env_mask(self, env_ids=None):
+        num_envs = len(env_ids) if env_ids is not None else self.num_envs
+        if not self.cfg.commands.heading_command:
+            return torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+        if getattr(self.cfg.commands, "heading_command_difficult_only", False):
+            return self._get_difficult_command_env_mask(env_ids)
+        return torch.ones(num_envs, dtype=torch.bool, device=self.device)
+
     def _resample_commands(self, env_ids):
         if len(env_ids) == 0:
             return
@@ -421,18 +429,21 @@ class BlackWEnv(BlackEnv):
             (len(env_ids), 1),
             device=self.device,
         ).squeeze(1)
-        if self.cfg.commands.heading_command:
-            self.commands[env_ids, 3] = torch_rand_float(
+        heading_env_mask = self._get_heading_command_env_mask(env_ids)
+        heading_env_ids = env_ids[heading_env_mask]
+        yaw_env_ids = env_ids[~heading_env_mask]
+        if len(heading_env_ids) > 0:
+            self.commands[heading_env_ids, 3] = torch_rand_float(
                 self.command_ranges["heading"][0],
                 self.command_ranges["heading"][1],
-                (len(env_ids), 1),
+                (len(heading_env_ids), 1),
                 device=self.device,
             ).squeeze(1)
-        else:
-            self.commands[env_ids, 2] = torch_rand_float(
+        if len(yaw_env_ids) > 0:
+            self.commands[yaw_env_ids, 2] = torch_rand_float(
                 self.command_ranges["ang_vel_yaw"][0],
                 self.command_ranges["ang_vel_yaw"][1],
-                (len(env_ids), 1),
+                (len(yaw_env_ids), 1),
                 device=self.device,
             ).squeeze(1)
 
@@ -456,12 +467,12 @@ class BlackWEnv(BlackEnv):
                 self.commands[difficult_env_ids, 1] = torch_rand_float(
                     y_range[0], y_range[1], (len(difficult_env_ids), 1), device=self.device
                 ).squeeze(1)
-            if not self.cfg.commands.heading_command:
-                yaw_range = self._get_difficult_command_range("difficult_ang_vel_yaw")
-                if yaw_range is not None:
-                    self.commands[difficult_env_ids, 2] = torch_rand_float(
-                        yaw_range[0], yaw_range[1], (len(difficult_env_ids), 1), device=self.device
-                    ).squeeze(1)
+            yaw_range = self._get_difficult_command_range("difficult_ang_vel_yaw")
+            difficult_yaw_env_ids = difficult_env_ids[~self._get_heading_command_env_mask(difficult_env_ids)]
+            if yaw_range is not None and len(difficult_yaw_env_ids) > 0:
+                self.commands[difficult_yaw_env_ids, 2] = torch_rand_float(
+                    yaw_range[0], yaw_range[1], (len(difficult_yaw_env_ids), 1), device=self.device
+                ).squeeze(1)
 
         self.commands[env_ids, :2] *= (
             torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.xy_norm_stop_threshold
@@ -471,19 +482,20 @@ class BlackWEnv(BlackEnv):
         resample_interval = int(self.cfg.commands.resampling_time / self.dt)
         env_ids = (self.episode_length_buf % resample_interval == 0).nonzero(as_tuple=False).flatten()
         self._resample_commands(env_ids)
-        if self.cfg.commands.heading_command:
+        heading_envs = self._get_heading_command_env_mask()
+        if torch.any(heading_envs):
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
-            self.commands[:, 2] = torch.clip(
-                self.cfg.commands.heading_yaw_gain * wrap_to_pi(self.commands[:, 3] - heading),
+            self.commands[heading_envs, 2] = torch.clip(
+                self.cfg.commands.heading_yaw_gain * wrap_to_pi(self.commands[heading_envs, 3] - heading[heading_envs]),
                 -self.cfg.commands.heading_yaw_clip,
                 self.cfg.commands.heading_yaw_clip,
             )
             yaw_range = self._get_difficult_command_range("difficult_ang_vel_yaw")
             if yaw_range is not None:
-                difficult_envs = self._get_difficult_command_env_mask()
-                self.commands[difficult_envs, 2] = torch.clamp(
-                    self.commands[difficult_envs, 2], yaw_range[0], yaw_range[1]
+                difficult_heading_envs = heading_envs & self._get_difficult_command_env_mask()
+                self.commands[difficult_heading_envs, 2] = torch.clamp(
+                    self.commands[difficult_heading_envs, 2], yaw_range[0], yaw_range[1]
                 )
 
         if self.cfg.terrain.measure_heights:
@@ -589,21 +601,19 @@ class BlackWEnv(BlackEnv):
                 )
             self._clear_command_curriculum_buffer("y")
 
-        if not self.cfg.commands.heading_command:
-            self._append_command_curriculum_samples("yaw", "tracking_ang_vel", simple_command_env_ids, 2)
-            if self._command_curriculum_buffer_count("yaw") >= buffer_min:
-                yaw_ratio = self._command_curriculum_buffer_mean("yaw")
-                yaw_threshold = self.cfg.commands.yaw_curriculum_score_scale
-                self.last_cmd_curr_yaw_score = yaw_ratio / max(yaw_threshold, 1e-6)
-                if yaw_ratio > yaw_threshold:
-                    self._expand_command_range(
-                        "ang_vel_yaw",
-                        self.cfg.commands.yaw_curriculum_step,
-                        self.cfg.commands.max_yaw_curriculum,
-                    )
-                self._clear_command_curriculum_buffer("yaw")
-        elif hasattr(self, "last_cmd_curr_yaw_score"):
-            delattr(self, "last_cmd_curr_yaw_score")
+        yaw_curriculum_env_ids = simple_command_env_ids[~self._get_heading_command_env_mask(simple_command_env_ids)]
+        self._append_command_curriculum_samples("yaw", "tracking_ang_vel", yaw_curriculum_env_ids, 2)
+        if self._command_curriculum_buffer_count("yaw") >= buffer_min:
+            yaw_ratio = self._command_curriculum_buffer_mean("yaw")
+            yaw_threshold = self.cfg.commands.yaw_curriculum_score_scale
+            self.last_cmd_curr_yaw_score = yaw_ratio / max(yaw_threshold, 1e-6)
+            if yaw_ratio > yaw_threshold:
+                self._expand_command_range(
+                    "ang_vel_yaw",
+                    self.cfg.commands.yaw_curriculum_step,
+                    self.cfg.commands.max_yaw_curriculum,
+                )
+            self._clear_command_curriculum_buffer("yaw")
 
     def check_termination(self):
         self.reset_buf = torch.any(
