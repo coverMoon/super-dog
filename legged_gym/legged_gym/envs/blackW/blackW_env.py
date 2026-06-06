@@ -107,6 +107,9 @@ class BlackWEnv(BlackEnv):
         }
         self.last_cmd_curr_score = float("nan")
         self.last_cmd_curr_y_score = float("nan")
+        self.heading_command_env_mask = torch.zeros(
+            self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False
+        )
         if hasattr(self, "last_cmd_curr_yaw_score"):
             delattr(self, "last_cmd_curr_yaw_score")
 
@@ -409,9 +412,36 @@ class BlackWEnv(BlackEnv):
         num_envs = len(env_ids) if env_ids is not None else self.num_envs
         if not self.cfg.commands.heading_command:
             return torch.zeros(num_envs, dtype=torch.bool, device=self.device)
-        if getattr(self.cfg.commands, "heading_command_difficult_only", False):
-            return self._get_difficult_command_env_mask(env_ids)
-        return torch.ones(num_envs, dtype=torch.bool, device=self.device)
+        if not getattr(self.cfg.commands, "heading_command_difficult_only", False):
+            return torch.ones(num_envs, dtype=torch.bool, device=self.device)
+        if not hasattr(self, "heading_command_env_mask"):
+            self.heading_command_env_mask = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False
+            )
+        return self.heading_command_env_mask if env_ids is None else self.heading_command_env_mask[env_ids]
+
+    def _resample_heading_command_env_mask(self, env_ids):
+        if len(env_ids) == 0:
+            return
+        if not hasattr(self, "heading_command_env_mask"):
+            self.heading_command_env_mask = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False
+            )
+        if not self.cfg.commands.heading_command:
+            self.heading_command_env_mask[env_ids] = False
+            return
+        if not getattr(self.cfg.commands, "heading_command_difficult_only", False):
+            self.heading_command_env_mask[env_ids] = True
+            return
+
+        difficult_mask = self._get_difficult_command_env_mask(env_ids)
+        heading_mask = difficult_mask.clone()
+        simple_mask = ~difficult_mask
+        simple_count = int(torch.sum(simple_mask).item())
+        simple_prob = float(np.clip(getattr(self.cfg.commands, "simple_heading_command_prob", 0.0), 0.0, 1.0))
+        if simple_count > 0 and simple_prob > 0.0:
+            heading_mask[simple_mask] = torch.rand(simple_count, device=self.device) < simple_prob
+        self.heading_command_env_mask[env_ids] = heading_mask
 
     def _resample_commands(self, env_ids):
         if len(env_ids) == 0:
@@ -429,6 +459,7 @@ class BlackWEnv(BlackEnv):
             (len(env_ids), 1),
             device=self.device,
         ).squeeze(1)
+        self._resample_heading_command_env_mask(env_ids)
         heading_env_mask = self._get_heading_command_env_mask(env_ids)
         heading_env_ids = env_ids[heading_env_mask]
         yaw_env_ids = env_ids[~heading_env_mask]

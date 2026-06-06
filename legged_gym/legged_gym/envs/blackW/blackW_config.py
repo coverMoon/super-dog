@@ -125,6 +125,7 @@ class BlackWCfg(BlackCfg):
         resampling_time = 10.0
         heading_command = True
         heading_command_difficult_only = True
+        simple_heading_command_prob = 0.3
         low_speed_x_range = [-1.0, 1.0]
         high_vel_env_fraction = 0.2
         high_speed_lateral_disable_x_threshold = 1.5
