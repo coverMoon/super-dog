@@ -693,19 +693,41 @@ class BlackWEnv(BlackEnv):
         height_error = torch.where(high_wall_envs, height_error * high_wall_base_height_scale, height_error)
         return height_error
 
+    def _stand_lin_command_mask(self):
+        return torch.norm(self.commands[:, :2], dim=1) < self.cfg.rewards.stand_still_cmd_threshold
+
+    def _stand_wheel_command_mask(self):
+        lin_stand = self._stand_lin_command_mask()
+        yaw_stand = torch.abs(self.commands[:, 2]) < self.cfg.rewards.stand_still_yaw_threshold
+        return lin_stand & yaw_stand
+
     def _reward_hip_default(self):
-        return torch.sum(
+        hip_error = torch.sum(
             torch.square(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]),
             dim=1,
         )
+        y_ref = max(self.cfg.rewards.hip_default_y_ref, 1e-6)
+        yaw_ref = max(self.cfg.rewards.hip_default_yaw_ref, 1e-6)
+        y_cmd = torch.clamp(torch.abs(self.commands[:, 1]) / y_ref, max=1.0)
+        yaw_cmd = torch.clamp(torch.abs(self.commands[:, 2]) / yaw_ref, max=1.0)
+        scale = 1.0 - self.cfg.rewards.hip_default_y_scale * y_cmd
+        scale = scale - self.cfg.rewards.hip_default_yaw_scale * yaw_cmd
+        scale = torch.clamp(scale, min=self.cfg.rewards.hip_default_cmd_min_scale, max=1.0)
+        return hip_error * scale
 
     def _reward_stand_still(self):
         dof_err = self.dof_pos - self.default_dof_pos
         dof_err = dof_err.clone()
         dof_err[:, self.wheel_indices] = 0.0
-        return torch.sum(torch.abs(dof_err), dim=1) * (
-            torch.norm(self.commands[:, :2], dim=1) < self.cfg.rewards.stand_still_cmd_threshold
-        )
+        return torch.sum(torch.abs(dof_err), dim=1) * self._stand_lin_command_mask()
+
+    def _reward_stand_wheel_action(self):
+        wheel_action = self.actions[:, self.wheel_indices]
+        return torch.sum(torch.square(wheel_action), dim=1) * self._stand_wheel_command_mask()
+
+    def _reward_stand_wheel_vel(self):
+        wheel_vel = self.dof_vel[:, self.wheel_indices]
+        return torch.sum(torch.square(wheel_vel), dim=1) * self._stand_wheel_command_mask()
 
     def _reward_torques(self):
         return torch.sum(torch.square(self.torques), dim=1)
@@ -782,6 +804,36 @@ class BlackWEnv(BlackEnv):
             torch.ones_like(self.wheel_obstacle_lift_timer[:, 0]),
         ).unsqueeze(1)
         return torch.sum(lift_reward * active.float() * command_gate.float() * terrain_scale, dim=1)
+
+    def _reward_wheel_obstacle_spin(self):
+        cfg = self.cfg.rewards.wheel_obstacle_spin
+        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
+        wheel_pos = wheel_states[:, :, :3]
+        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
+        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
+        contact_gate = horizontal_force > cfg.horizontal_force_threshold
+
+        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
+        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
+        obstacle_rel_height = obstacle_height - ground_height
+        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+
+        command_gate = self.commands[:, 0:1] > cfg.command_threshold
+        progress_gate = self.base_lin_vel[:, 0:1] < cfg.progress_threshold
+
+        terrain_types = getattr(cfg, "terrain_types", [])
+        if len(terrain_types) > 0:
+            terrain_type_ids = self._get_terrain_type_ids()
+            terrain_gate = torch.zeros_like(terrain_type_ids, dtype=torch.bool)
+            for terrain_type in terrain_types:
+                terrain_gate = terrain_gate | (terrain_type_ids == terrain_type)
+        else:
+            terrain_gate = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+
+        wheel_spin = torch.clamp(torch.abs(self.dof_vel[:, self.wheel_indices]) - cfg.spin_threshold, min=0.0)
+        spin_penalty = torch.square(wheel_spin)
+        gate = contact_gate & obstacle_gate & command_gate & progress_gate & terrain_gate.unsqueeze(1)
+        return torch.sum(spin_penalty * gate.float(), dim=1)
 
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)

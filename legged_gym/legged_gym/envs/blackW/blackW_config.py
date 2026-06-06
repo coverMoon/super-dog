@@ -260,10 +260,16 @@ class BlackWCfg(BlackCfg):
         only_positive_rewards = False
         max_contact_force = 100.0
         stand_still_cmd_threshold = 0.1
+        stand_still_yaw_threshold = 0.1
         run_still_cmd_threshold = 0.1
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
         feet_stumble_ratio = 3.0
+        hip_default_cmd_min_scale = 0.5
+        hip_default_y_ref = 0.5
+        hip_default_yaw_ref = 1.0
+        hip_default_y_scale = 0.35
+        hip_default_yaw_scale = 0.35
 
         class terrain_adaptive:
             enabled = False
@@ -342,29 +348,56 @@ class BlackWCfg(BlackCfg):
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
+        class wheel_obstacle_spin:
+            terrain_types = [3, 4, 9]
+            horizontal_force_threshold = 25.0
+            command_threshold = 0.2
+            obstacle_height_threshold = 0.035
+            spin_threshold = 8.0
+            progress_threshold = 0.25
+
         class scales:
-            termination = -0.0
+            # Command tracking and forward progress.
+            # 指令跟踪与前向推进奖励。
             tracking_lin_vel_x = 1.5
             tracking_lin_vel_y = 1.5
             tracking_ang_vel = 1.25
             progress = 1.0
+
+            # Base posture and body stability.
+            # 机身姿态、高度与整体稳定性约束。
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -0.5
             roll_orientation = -0.5
             base_height = -5.0
-            hip_default = -0.6
+
+            # Joint posture and stand behavior.
+            # 关节姿态回中与静止行为约束。
+            hip_default = -0.9
             stand_still = -0.5
+            run_still = -0.05
+            stand_wheel_action = -0.2
+            stand_wheel_vel = -0.02
+
+            # Contact and obstacle handling.
+            # 接触碰撞、绊脚与越障相关项。
             collision = -1.0
             feet_stumble = -0.1
+            wheel_obstacle_lift = 1.2
+            wheel_obstacle_spin = -0.03
+
+            # Action and actuator regularization.
+            # 动作平滑、力矩与关节速度正则项。
             action_rate = -0.06
             smoothness = -0.012
             torques = -6.2e-4
             dof_vel = -1e-7
             dof_acc = -1e-7
-            run_still = -0.05
 
-            wheel_obstacle_lift = 1.2
+            # Disabled legacy or experimental terms.
+            # 当前关闭的历史项或预留实验项。
+            termination = -0.0
             tracking_lin_vel = 0.0
             joint_power = -0.0
             foot_clearance = -0.0
