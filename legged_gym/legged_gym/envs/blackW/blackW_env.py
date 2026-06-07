@@ -33,6 +33,13 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
+        self.wheel_friction_scales = torch.ones(
+            self.num_envs,
+            1,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
 
     def _resample_wheel_randomization(self, env_ids):
         if len(env_ids) == 0 or not hasattr(self, "wheel_vel_ref_scales"):
@@ -45,6 +52,14 @@ class BlackWEnv(BlackEnv):
             )
         else:
             self.wheel_vel_ref_scales[env_ids] = 1.0
+
+        if getattr(self.cfg.domain_rand, "randomize_wheel_friction", False):
+            friction_scale_range = getattr(self.cfg.domain_rand, "wheel_friction_scale_range", [1.0, 1.0])
+            self.wheel_friction_scales[env_ids] = torch_rand_float(
+                friction_scale_range[0], friction_scale_range[1], (len(env_ids), 1), device=self.device
+            )
+        else:
+            self.wheel_friction_scales[env_ids] = 1.0
 
         if getattr(self.cfg.domain_rand, "randomize_wheel_vel_ref_bias", False):
             bias_range = getattr(self.cfg.domain_rand, "wheel_vel_ref_bias_range", [0.0, 0.0])
@@ -69,6 +84,34 @@ class BlackWEnv(BlackEnv):
             )
         else:
             self.hip_motor_strength_factors[env_ids] = 1.0
+
+    def _init_blackW_wheel_shape_indices(self):
+        shape_ranges = self.gym.get_actor_rigid_body_shape_indices(self.envs[0], self.actor_handles[0])
+        wheel_shape_indices = []
+        for body_id in self.wheel_body_indices.detach().cpu().tolist():
+            shape_range = shape_ranges[body_id]
+            wheel_shape_indices.extend(range(shape_range.start, shape_range.start + shape_range.count))
+        self.wheel_shape_indices = wheel_shape_indices
+        print("### blackW wheel shape indices:", self.wheel_shape_indices)
+
+    def _apply_wheel_friction_randomization(self, env_ids):
+        if not getattr(self.cfg.domain_rand, "randomize_wheel_friction", False):
+            return
+        if not hasattr(self, "wheel_shape_indices") or not hasattr(self, "wheel_friction_scales"):
+            return
+        if len(env_ids) == 0:
+            return
+        env_id_list = env_ids.detach().cpu().tolist() if torch.is_tensor(env_ids) else list(env_ids)
+        for env_id in env_id_list:
+            rigid_shape_props = self.gym.get_actor_rigid_shape_properties(self.envs[env_id], self.actor_handles[env_id])
+            if hasattr(self, "friction_coeffs"):
+                base_friction = float(self.friction_coeffs[env_id, 0].item())
+            else:
+                base_friction = float(self.cfg.terrain.static_friction)
+            wheel_friction = base_friction * float(self.wheel_friction_scales[env_id, 0].item())
+            for shape_id in self.wheel_shape_indices:
+                rigid_shape_props[shape_id].friction = wheel_friction
+            self.gym.set_actor_rigid_shape_properties(self.envs[env_id], self.actor_handles[env_id], rigid_shape_props)
 
     def _init_blackW_obstacle_lift_buffers(self):
         self.wheel_obstacle_lift_timer = torch.zeros(
@@ -176,8 +219,11 @@ class BlackWEnv(BlackEnv):
         print("### blackW wheel forward sign:", self.wheel_forward_sign.detach().cpu().tolist())
         print("### blackW wheel control mode:", self.cfg.control.wheel_control_mode)
 
+        self._init_blackW_wheel_shape_indices()
         self._init_blackW_wheel_randomization_buffers()
-        self._resample_wheel_randomization(torch.arange(self.num_envs, device=self.device))
+        all_env_ids = torch.arange(self.num_envs, device=self.device)
+        self._resample_wheel_randomization(all_env_ids)
+        self._apply_wheel_friction_randomization(all_env_ids)
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
@@ -186,6 +232,7 @@ class BlackWEnv(BlackEnv):
             self.wheel_obstacle_lift_target_z[env_ids] = 0.0
             self.wheel_obstacle_lift_start_z[env_ids] = 0.0
         self._resample_wheel_randomization(env_ids)
+        self._apply_wheel_friction_randomization(env_ids)
 
     def _process_dof_props(self, props, env_id):
         props = super()._process_dof_props(props, env_id).copy()
@@ -677,8 +724,31 @@ class BlackWEnv(BlackEnv):
     def _reward_ang_vel_xy(self):
         return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
 
+    def _get_orientation_terrain_variability(self):
+        if not getattr(self.cfg.rewards, "orientation_terrain_adaptive", False):
+            return torch.zeros(self.num_envs, device=self.device)
+        under_body_heights = self._get_under_body_height_samples()
+        terrain_variability = torch.std(under_body_heights, dim=1)
+        clip = self.cfg.rewards.orientation_terrain_variability_clip
+        return torch.clamp(terrain_variability, min=0.0, max=clip)
+
+    def _get_orientation_pitch_scale(self):
+        if not getattr(self.cfg.rewards, "orientation_terrain_adaptive", False):
+            return torch.ones(self.num_envs, device=self.device)
+        terrain_variability = self._get_orientation_terrain_variability()
+        sigma = max(self.cfg.rewards.orientation_terrain_sigma, 1e-6)
+        scale = torch.exp(-torch.square(terrain_variability) / sigma)
+        return torch.clamp(
+            scale,
+            min=self.cfg.rewards.orientation_terrain_min_scale,
+            max=self.cfg.rewards.orientation_terrain_max_scale,
+        )
+
     def _reward_orientation(self):
-        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+        pitch_proj = self.projected_gravity[:, 0]
+        roll_proj = self.projected_gravity[:, 1]
+        pitch_scale = self._get_orientation_pitch_scale()
+        return torch.abs(roll_proj) + torch.abs(pitch_proj) * pitch_scale
 
     def _reward_roll_orientation(self):
         return torch.square(self.projected_gravity[:, 1])
@@ -703,7 +773,7 @@ class BlackWEnv(BlackEnv):
 
     def _reward_hip_default(self):
         hip_error = torch.sum(
-            torch.square(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]),
+            torch.abs(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]),
             dim=1,
         )
         y_ref = max(self.cfg.rewards.hip_default_y_ref, 1e-6)

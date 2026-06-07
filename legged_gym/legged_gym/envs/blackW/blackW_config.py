@@ -8,10 +8,10 @@ class BlackWCfg(BlackCfg):
         lin_vel = [0.0, 0.0, 0.0]
         ang_vel = [0.0, 0.0, 0.0]
         default_joint_angles = {
-            'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527, 'FL_wheel_joint': 0.0,
-            'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,  'FR_wheel_joint': 0.0,
-            'RL_hip_joint': 0.0,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527, 'RL_wheel_joint': 0.0,
-            'RR_hip_joint': -0.0,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527,  'RR_wheel_joint': 0.0,
+            'FL_hip_joint': 0.05,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527, 'FL_wheel_joint': 0.0,
+            'FR_hip_joint': -0.05,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,  'FR_wheel_joint': 0.0,
+            'RL_hip_joint': -0.05,   'RL_thigh_joint': 0.8014,   'RL_calf_joint': -1.527, 'RL_wheel_joint': 0.0,
+            'RR_hip_joint': 0.05,  'RR_thigh_joint': -0.8014,  'RR_calf_joint': 1.527,  'RR_wheel_joint': 0.0,
         }
 
     class control(BlackCfg.control):
@@ -212,6 +212,11 @@ class BlackWCfg(BlackCfg):
         wheel_motor_strength_range = [0.8, 1.2]
         wheel_vel_ref_scale_range = [0.9, 1.1]
 
+        randomize_wheel_friction = True
+        # Multiplied onto per-env base friction; wheel friction is at most the sampled base friction.
+        # 乘在每个 env 的基础摩擦系数上，轮子摩擦最高等于基础摩擦。
+        wheel_friction_scale_range = [0.4, 1.0]
+
         randomize_wheel_vel_ref_bias = True
         wheel_vel_ref_bias_range = [-0.3, 0.3]
 
@@ -252,24 +257,36 @@ class BlackWCfg(BlackCfg):
     class rewards(BlackCfg.rewards):
         cycle_time = 0.8
         clearance_height_target = 0.08
+
         tracking_sigma = 0.25
+
         soft_dof_pos_limit = 1.0
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
+
         base_height_target = 0.53
         only_positive_rewards = False
         max_contact_force = 100.0
+
         stand_still_cmd_threshold = 0.1
         stand_still_yaw_threshold = 0.1
         run_still_cmd_threshold = 0.1
+
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
         feet_stumble_ratio = 3.0
+
         hip_default_cmd_min_scale = 0.5
         hip_default_y_ref = 0.5
         hip_default_yaw_ref = 1.0
         hip_default_y_scale = 0.35
         hip_default_yaw_scale = 0.35
+
+        orientation_terrain_adaptive = True
+        orientation_terrain_variability_clip = 0.30
+        orientation_terrain_sigma = 0.0015
+        orientation_terrain_min_scale = 0.05
+        orientation_terrain_max_scale = 1.0
 
         class terrain_adaptive:
             enabled = False
@@ -368,13 +385,13 @@ class BlackWCfg(BlackCfg):
             # 机身姿态、高度与整体稳定性约束。
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
-            orientation = -0.5
-            roll_orientation = -0.5
+            orientation = -3.0
+            roll_orientation = -0.0
             base_height = -5.0
 
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
-            hip_default = -0.9
+            hip_default = -0.35
             stand_still = -0.5
             run_still = -0.05
             stand_wheel_action = -0.2
@@ -385,12 +402,12 @@ class BlackWCfg(BlackCfg):
             collision = -1.0
             feet_stumble = -0.1
             wheel_obstacle_lift = 1.2
-            wheel_obstacle_spin = -0.03
+            wheel_obstacle_spin = -0.06
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
             action_rate = -0.06
-            smoothness = -0.012
+            smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
             dof_acc = -1e-7
@@ -456,7 +473,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.005
+        entropy_coef = 0.003
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3
@@ -502,14 +519,14 @@ class BlackWCfgPPO(BlackCfgPPO):
             1.0, 1.0, 1.0, 0.0,
         ]
         frame_stack = 6
-        sym_coef = 0.6
+        sym_coef = 0.8
 
     class runner(BlackCfgPPO.runner):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
         save_interval = 50
         num_steps_per_env = 64
-        max_iterations = 5000
+        max_iterations = 1000
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None
