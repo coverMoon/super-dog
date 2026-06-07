@@ -264,13 +264,14 @@ class BlackWCfg(BlackCfg):
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
 
-        base_height_target = 0.53
+        base_height_target = 0.52
         only_positive_rewards = False
         max_contact_force = 100.0
 
         stand_still_cmd_threshold = 0.1
         stand_still_yaw_threshold = 0.1
-        run_still_cmd_threshold = 0.1
+        run_still_x_threshold = 0.1 # 大于时触发
+        run_still_y_threshold = 0.1 # 小于时触发
 
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
@@ -370,8 +371,18 @@ class BlackWCfg(BlackCfg):
             horizontal_force_threshold = 25.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.035
-            spin_threshold = 8.0
+            spin_threshold = 6.0
             progress_threshold = 0.25
+
+        class wheel_lateral_clearance:
+            command_threshold = 0.1
+            target_extra_height = 0.04
+            tracking_sigma = 0.03
+            top_k = 2
+            terrain_variability_clip = 0.30
+            terrain_variability_sigma = 0.0015
+            terrain_min_scale = 0.0
+            terrain_max_scale = 1.0
 
         class scales:
             # Command tracking and forward progress.
@@ -393,7 +404,7 @@ class BlackWCfg(BlackCfg):
             # 关节姿态回中与静止行为约束。
             hip_default = -0.35
             stand_still = -0.5
-            run_still = -0.05
+            run_still = -0.5
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -401,8 +412,9 @@ class BlackWCfg(BlackCfg):
             # 接触碰撞、绊脚与越障相关项。
             collision = -1.0
             feet_stumble = -0.1
-            wheel_obstacle_lift = 1.2
+            wheel_obstacle_lift = 1.5
             wheel_obstacle_spin = -0.06
+            wheel_lateral_clearance = 1.2
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。

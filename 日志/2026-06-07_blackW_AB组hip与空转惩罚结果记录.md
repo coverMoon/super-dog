@@ -68,3 +68,53 @@
 实验目的：验证更宽的默认支撑宽度能否减少静止偏斜、低速 y 指令先侧倾、yaw 卡腿后姿态不易恢复等问题，同时观察是否影响 tracking_lin_vel_y、tracking_ang_vel、terrain_level 和 wheel_obstacle_lift。
 
 注意：由于策略 action 是相对 default_dof_pos 的残差，B 组会改变同一 action 对应的实际目标关节角；建议与 A 组只差默认 hip 位置，其他参数保持一致，便于判断站姿外展本身的影响。
+
+
+## 4. Jun07_17-44-57_ 与 Jun07_17-46-13_ 结果及实机反馈
+
+实验配置：两组均使用 orientation L1、pitch 地形自适应快速衰减、entropy_coef = 0.003、sym_coef = 0.8、max_iterations = 1000。Jun07_17-44-57_ 默认 hip 仍为 0.0；Jun07_17-46-13_ 的 hip 默认位置为 FL/RR = +0.05、FR/RL = -0.05。后者并非左侧统一为正、右侧统一为负，需要后续确认符号是否符合真实外展定义。
+
+训练曲线：
+
+- Jun07_17-44-57_ 末尾 mean_reward 约 64.7，terrain_level 约 5.54，tracking_ang_vel 约 0.80，mean_noise_std 约 0.26；但 value_loss 末尾升到约 40.6，tail100 约 10.7，说明后段 critic 有明显波动。
+- Jun07_17-46-13_ 末尾 mean_reward 约 59.7，terrain_level 约 5.57，tracking_ang_vel 约 0.79，mean_noise_std 约 0.30；value_loss 约 0.15，训练稳定性更好。
+- 两组 rew_orientation tail100 均约 -0.194，说明 orientation L1 后姿态惩罚处在相近水平；run_still tail100 均约 -0.112，对应运动时非轮关节相对默认位置仍存在较明显的累计偏差。
+
+实机反馈：使用 Jun07_17-44-57_ 并在部署侧临时将 hip 默认位置稍微外放后，姿态问题有一定改善但没有完全解决；髋关节外放方向有效，但受重力影响会被压得更宽，可能导致大腿与小腿连接处压力增大。持续前进或后退时仍会出现关节变形，推测 run_still 约束偏弱或运动中关节回默认形态的约束不够。
+
+后续判断：髋默认位置外放有效，但幅度不宜继续直接增大，建议优先测试更小外放量或确保符号为真正左右外展；同时考虑增强 run_still 或增加更细分的运动中关节姿态约束，用于抑制持续 x 指令下的慢性变形。
+
+
+## 5. y 指令抬轮 gap 与 run_still 增强
+
+实机反馈：部署 Jun07_17-44-57_ 时将 hip 默认位置临时外放到约 0.1 rad 后，姿态稳定性进一步改善，说明外展增大支撑宽度方向有效；当前训练配置中的 0.05 rad 外放仍可继续使用。但实机上由于重力会把髋关节压得更宽，过大的部署外放可能让大腿与小腿连接处承受额外压力。
+
+仍存在的问题：y 指令下姿态仍不够稳，虽然 orientation L1 已有改善；更明显的 sim2real gap 是实机轮子/腿不容易主动抬起，很多时候仍在地上蹭，而仿真里轮子离地更充分。持续 x 前进或后退时也会出现关节慢性变形，说明 run_still 约束偏弱。
+
+本次改动：
+
+- run_still scale 从 -0.05 提到 -0.4，用于增强运动中非轮关节回默认姿态的约束，抑制持续前进/后退时的关节变形。
+- 新增 wheel_lateral_clearance reward，只在 abs(cmd_y) > 0.2 时启用；以轮子中心相对地面的高度为目标，要求 top-2 个轮子达到 wheel_radius + 0.04 m 的额外离地高度。
+- wheel_lateral_clearance 使用地形高度 std 做衰减，terrain_variability_sigma = 0.0015，复杂地形/高墙附近奖励快速变弱，尽量避免和 wheel_obstacle_lift 或越障动作冲突。
+- 当前 wheel_lateral_clearance scale = 0.5，tracking_sigma = 0.03，top_k = 2。
+
+预期：横向低速运动时减少轮子贴地横蹭，鼓励策略至少抬起部分轮子完成迈步；同时通过更强 run_still 抑制持续 x 指令下的腿部形变。观察重点为 tracking_lin_vel_y、orientation、run_still、wheel_lateral_clearance、terrain_level 和 wheel_obstacle_lift。
+
+
+补充：run_still 原先通过 norm(cmd_x, cmd_y) 开启，会在 y 指令下同样强压非轮关节回默认位置，与横向迈步和 wheel_lateral_clearance 存在冲突。已新增 run_still_y_threshold = 0.1，并将 _reward_run_still 门控改为仅在 abs(cmd_x) > run_still_x_threshold 且 abs(cmd_y) < run_still_y_threshold 时启用，使 run_still 主要处理持续前进/后退时的关节慢性变形。
+
+
+## 6. 加强 y 抬轮与 x 运动回中约束
+
+400 轮短训后，新增 wheel_lateral_clearance 与 run_still 门控的收益不够明显，推测一方面当前 27000 轮附近模型动作模式已有一定固化，另一方面 y 指令抬轮与持续 x 运动回默认的约束仍偏弱。后续准备一条线继续从当前模型续训，另一条线使用相同配置从 Jun02_22-30-50_ 的模型继续训练，以验证更早、姿态更干净的模型是否更容易学出横向抬轮动作。
+
+本次参数调整：
+
+- base_height_target 从 0.53 降到 0.52，希望略微降低重心，减轻姿态漂移。
+- run_still 拆分为 run_still_x_threshold 与 run_still_y_threshold：仅在 abs(cmd_x) > 0.1 且 abs(cmd_y) < 0.1 时启用，避免与 y 指令横向迈步和 wheel_lateral_clearance 冲突。
+- run_still scale 加强到 -0.5，用于更强地抑制持续前进/后退时非轮关节相对默认位置的慢性变形。
+- wheel_lateral_clearance scale 加强到 1.2，command_threshold 为 0.1，目标仍为 top-2 轮子达到 wheel_radius + 0.04 m 的额外离地高度。
+- wheel_obstacle_lift scale 加强到 1.5，继续鼓励障碍前轮子主动抬升。
+- wheel_obstacle_spin 的 spin_threshold 从 8.0 降到 6.0，使空转惩罚更早触发。
+
+风险：run_still = -0.5 已经较强，可能压缩持续 x 运动中的步态幅度；wheel_lateral_clearance = 1.2 可能影响 y tracking 或诱导不必要抬腿。观察重点为 tracking_lin_vel_x/y、rew_run_still、rew_wheel_lateral_clearance、rew_wheel_obstacle_lift、terrain_level、姿态稳定性和实机轮子是否仍贴地横蹭。
