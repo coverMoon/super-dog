@@ -826,14 +826,23 @@ class BlackWEnv(BlackEnv):
         wheel_pos = wheel_states[:, :, :3]
         ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
         target_z = ground_height + self.cfg.control.wheel_radius + cfg.target_extra_height
-        height_error = torch.clamp(target_z - wheel_pos[:, :, 2], min=0.0)
+        height_error = torch.abs(target_z - wheel_pos[:, :, 2])
         sigma = max(cfg.tracking_sigma, 1e-6)
         wheel_clearance_reward = torch.exp(-torch.square(height_error / sigma))
 
         top_k = min(max(int(cfg.top_k), 1), wheel_clearance_reward.shape[1])
         top_reward = torch.topk(wheel_clearance_reward, k=top_k, dim=1).values.mean(dim=1)
 
-        y_command_gate = torch.abs(self.commands[:, 1]) > cfg.command_threshold
+        y_command = torch.abs(self.commands[:, 1])
+        full_command_threshold = max(
+            getattr(cfg, "full_command_threshold", cfg.command_threshold),
+            cfg.command_threshold + 1e-6,
+        )
+        y_command_scale = torch.clamp(
+            (y_command - cfg.command_threshold) / (full_command_threshold - cfg.command_threshold),
+            min=0.0,
+            max=1.0,
+        )
         under_body_heights = self._get_under_body_height_samples()
         terrain_variability = torch.std(under_body_heights, dim=1)
         terrain_variability = torch.clamp(terrain_variability, min=0.0, max=cfg.terrain_variability_clip)
@@ -841,7 +850,7 @@ class BlackWEnv(BlackEnv):
         terrain_scale = torch.exp(-torch.square(terrain_variability) / terrain_sigma)
         terrain_scale = torch.clamp(terrain_scale, min=cfg.terrain_min_scale, max=cfg.terrain_max_scale)
 
-        return top_reward * y_command_gate.float() * terrain_scale
+        return top_reward * y_command_scale * terrain_scale
 
     def _reward_wheel_obstacle_lift(self):
         cfg = self.cfg.rewards.wheel_obstacle_lift
@@ -884,10 +893,20 @@ class BlackWEnv(BlackEnv):
             min=0.0,
             max=1.0,
         )
-        height_error = torch.clamp(self.wheel_obstacle_lift_target_z - wheel_z, min=0.0)
+        height_error = torch.abs(self.wheel_obstacle_lift_target_z - wheel_z)
         sigma = max(cfg.target_sigma, 1e-6)
         target_reward = torch.exp(-torch.square(height_error / sigma))
-        lift_reward = cfg.progress_weight * lift_progress + (1.0 - cfg.progress_weight) * target_reward
+        over_lift = torch.clamp(
+            wheel_z - self.wheel_obstacle_lift_target_z - cfg.over_lift_margin,
+            min=0.0,
+        )
+        over_lift_sigma = max(cfg.over_lift_sigma, 1e-6)
+        over_lift_penalty = cfg.over_lift_penalty_weight * torch.square(over_lift / over_lift_sigma)
+        lift_reward = (
+            cfg.progress_weight * lift_progress
+            + (1.0 - cfg.progress_weight) * target_reward
+            - over_lift_penalty
+        )
         # Down-stair terrain rewards controlled lowering rather than lifting; avoid rewarding turn-back/lift behavior.
         down_stairs_lift_scale = 0.0
         down_stairs_envs = self._get_terrain_type_ids() == 4
@@ -976,5 +995,6 @@ class BlackWEnv(BlackEnv):
         dof_err[:, self.wheel_indices] = 0.0
         x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
         y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
-        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small).float()
+        yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
+        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small & yaw_small).float()
 

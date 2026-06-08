@@ -109,7 +109,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.1, 0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.1]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.2, 0.2, 0.1, 0.0, 0.0, 0.0, 0.2]
         slope_treshold = 0.75
 
     class commands(BlackCfg.commands):
@@ -272,6 +272,7 @@ class BlackWCfg(BlackCfg):
         stand_still_yaw_threshold = 0.1
         run_still_x_threshold = 0.1 # 大于时触发
         run_still_y_threshold = 0.1 # 小于时触发
+        run_still_yaw_threshold = 0.15 # 小于时触发
 
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
@@ -363,6 +364,9 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
+            over_lift_margin = 0.015
+            over_lift_sigma = 0.035
+            over_lift_penalty_weight = 0.8
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
@@ -375,9 +379,10 @@ class BlackWCfg(BlackCfg):
             progress_threshold = 0.25
 
         class wheel_lateral_clearance:
-            command_threshold = 0.1
-            target_extra_height = 0.04
-            tracking_sigma = 0.03
+            command_threshold = 0.18
+            full_command_threshold = 0.45
+            target_extra_height = 0.015
+            tracking_sigma = 0.025
             top_k = 2
             terrain_variability_clip = 0.30
             terrain_variability_sigma = 0.0015
@@ -403,8 +408,8 @@ class BlackWCfg(BlackCfg):
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
             hip_default = -0.35
-            stand_still = -0.5
-            run_still = -0.5
+            stand_still = -0.6
+            run_still = -1.0
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -413,8 +418,8 @@ class BlackWCfg(BlackCfg):
             collision = -1.0
             feet_stumble = -0.1
             wheel_obstacle_lift = 1.5
-            wheel_obstacle_spin = -0.06
-            wheel_lateral_clearance = 1.2
+            wheel_obstacle_spin = -0.1
+            wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
@@ -485,7 +490,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.003
+        entropy_coef = 0.0025
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3
@@ -531,14 +536,14 @@ class BlackWCfgPPO(BlackCfgPPO):
             1.0, 1.0, 1.0, 0.0,
         ]
         frame_stack = 6
-        sym_coef = 0.8
+        sym_coef = 1.0
 
     class runner(BlackCfgPPO.runner):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'
         save_interval = 50
         num_steps_per_env = 64
-        max_iterations = 1000
+        max_iterations = 1000  
         experiment_name = "rough_blackW_dog"
         run_name = ""
         resume = None
