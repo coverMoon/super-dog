@@ -870,16 +870,37 @@ class BlackWEnv(BlackEnv):
         new_trigger = trigger & ~active
 
         new_start = wheel_z.detach()
+        low_obstacle_target = obstacle_height.detach() + cfg.clearance_margin
+        high_obstacle_target = (
+            obstacle_height.detach()
+            + self.cfg.control.wheel_radius
+            + cfg.high_obstacle_clearance_margin
+        )
+        target_by_height = torch.where(
+            obstacle_rel_height > cfg.high_obstacle_height_threshold,
+            high_obstacle_target,
+            low_obstacle_target,
+        )
         new_target = torch.maximum(
-            obstacle_height.detach() + cfg.clearance_margin,
+            target_by_height,
             new_start + cfg.min_lift_height,
         )
         self.wheel_obstacle_lift_start_z = torch.where(new_trigger, new_start, self.wheel_obstacle_lift_start_z)
         self.wheel_obstacle_lift_target_z = torch.where(new_trigger, new_target, self.wheel_obstacle_lift_target_z)
-        active_time = max(cfg.active_time, self.dt)
+        high_obstacle_active_ratio = torch.clamp(
+            (obstacle_rel_height - cfg.high_obstacle_height_threshold)
+            / max(cfg.high_obstacle_active_height_span, 1e-6),
+            min=0.0,
+            max=1.0,
+        )
+        active_time = torch.clamp(
+            torch.full_like(self.wheel_obstacle_lift_timer, cfg.active_time)
+            + high_obstacle_active_ratio * cfg.high_obstacle_extra_active_time,
+            min=self.dt,
+        )
         self.wheel_obstacle_lift_timer = torch.where(
             new_trigger,
-            torch.full_like(self.wheel_obstacle_lift_timer, active_time),
+            active_time,
             torch.clamp(self.wheel_obstacle_lift_timer - self.dt, min=0.0),
         )
 

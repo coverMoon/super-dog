@@ -359,14 +359,18 @@ class BlackWCfg(BlackCfg):
             command_threshold = 0.2
             obstacle_height_threshold = 0.035
             clearance_margin = 0.05
+            high_obstacle_height_threshold = 0.18
+            high_obstacle_clearance_margin = 0.04
+            high_obstacle_active_height_span = 0.18
+            high_obstacle_extra_active_time = 0.8
             min_lift_height = 0.05
             min_progress_span = 0.03
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.015
-            over_lift_sigma = 0.035
-            over_lift_penalty_weight = 0.8
+            over_lift_margin = 0.02
+            over_lift_sigma = 0.04
+            over_lift_penalty_weight = 0.5
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
