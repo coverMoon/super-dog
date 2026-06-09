@@ -200,6 +200,8 @@ class Terrain:
                 num_walls=getattr(self.cfg, "high_wall_num_walls", 3),
                 start_distance=getattr(self.cfg, "high_wall_start_distance", 1.2),
                 spacing=getattr(self.cfg, "high_wall_spacing", 1.2),
+                fill_full_block=getattr(self.cfg, "high_wall_fill_full_block", False),
+                spawn_clearance=getattr(self.cfg, "high_wall_spawn_clearance", 0.8),
             )
         
         return terrain
@@ -290,6 +292,8 @@ def high_wall_terrain(
     num_walls=1,
     start_distance=None,
     spacing=0.8,
+    fill_full_block=False,
+    spawn_clearance=0.8,
 ):
     """
     生成高墙地形
@@ -301,6 +305,8 @@ def high_wall_terrain(
     :param num_walls: 多墙模式下每块地形的墙数
     :param start_distance: 第一堵墙距离地图中心的距离 [m]
     :param spacing: 相邻高墙的固定间距 [m]
+    :param fill_full_block: 是否按 spacing 在整块地形内周期铺墙
+    :param spawn_clearance: fill_full_block 下跳过地图中心出生点附近的半径 [m]
     """
     h_raw = int(height / terrain.vertical_scale)
     center_x = terrain.length // 2
@@ -311,10 +317,27 @@ def high_wall_terrain(
     else:
         num_walls = max(1, int(num_walls))
         start_distance = distance if start_distance is None else start_distance
-        wall_specs = [
-            (start_distance + wall_idx * spacing, float(width_options[wall_idx % len(width_options)]))
-            for wall_idx in range(num_walls)
-        ]
+        if fill_full_block:
+            spacing = max(float(spacing), terrain.horizontal_scale)
+            spawn_clearance = max(float(spawn_clearance), 0.0)
+            half_length = terrain.length * terrain.horizontal_scale * 0.5
+            start_distance = abs(float(start_distance))
+            if start_distance <= spawn_clearance:
+                start_distance = spawn_clearance + spacing
+            forward_distances = np.arange(start_distance, half_length, spacing)
+            wall_distances = np.concatenate((-forward_distances[::-1], forward_distances))
+            wall_distances = [d for d in wall_distances if abs(d) > spawn_clearance]
+            wall_specs = []
+            for wall_distance in wall_distances:
+                phase_idx = int(round((abs(wall_distance) - start_distance) / spacing))
+                wall_specs.append(
+                    (float(wall_distance), float(width_options[phase_idx % len(width_options)]))
+                )
+        else:
+            wall_specs = [
+                (start_distance + wall_idx * spacing, float(width_options[wall_idx % len(width_options)]))
+                for wall_idx in range(num_walls)
+            ]
 
     for wall_distance, wall_width in wall_specs:
         dist_pixels = int(wall_distance / terrain.horizontal_scale)

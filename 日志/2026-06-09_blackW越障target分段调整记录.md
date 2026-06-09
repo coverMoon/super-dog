@@ -60,3 +60,12 @@ sim2sim 反馈：越障能力确实改善，但高墙翻越能力仍不够，尤
 - high_obstacle_extra_active_time 从 0.4 提到 0.8，高障碍 active_time 从最高 1.2s 增加到最高 1.6s，给 0.5m/s 左右低速触墙后的抬轮和姿态调整更多时间。
 
 预期：增强高墙尤其低速高墙的翻越能力，减少因轮心高度不足或抬轮窗口过短导致的顶墙卡住。风险是高墙后动作残留、抬轮偏高或 torques 上升；下一轮重点观察低速高墙成功率、越墙后的落地恢复、rew_wheel_obstacle_lift、collision、torques 和 value_loss。
+
+
+## 8. 高墙地形整块周期铺设
+
+观察：当前高墙地形只在每个地形块机器人出生位置前放置一组高墙。机器人翻越当前地形块的高墙并进入下一个地形块后，会先经历较长平地，再遇到下一组高墙，导致 episode 后半段训练信号被平地速度跟踪稀释，高墙连续处理能力不足。
+
+本次采用保守方案：为 high_wall_terrain 增加 fill_full_block / spawn_clearance 参数。blackW 中开启 high_wall_fill_full_block = True，并设置 high_wall_spawn_clearance = 0.8。高墙仍保留原来出生点前方 start_distance = 1.2、spacing = 1.2 的相位，同时在出生点后方镜像铺设，跳过中心出生点附近 0.8m 范围。对于 8m 地形块，典型相对位置为 -3.6、-2.4、-1.2、1.2、2.4、3.6m。
+
+预期：跨入下一个高墙地形块后更快再次遇到高墙，减少长平地段对高墙训练信号的稀释；同时出生点附近仍保持安全空区，避免 reset 后直接卡墙。观察重点：高墙连续翻越成功率、terrain_level、episode length、collision、torques、低速高墙表现，以及是否因墙密度增加导致训练不稳定。
