@@ -197,9 +197,9 @@ class Terrain:
                 terrain,
                 height=wall_h,
                 width_options=getattr(self.cfg, "high_wall_width_options", (0.0, 0.10)),
-                num_walls=getattr(self.cfg, "high_wall_num_walls", 3),
-                start_distance=getattr(self.cfg, "high_wall_start_distance", 1.2),
-                spacing=getattr(self.cfg, "high_wall_spacing", 1.2),
+                num_walls=getattr(self.cfg, "high_wall_num_walls", 2),
+                start_distance=getattr(self.cfg, "high_wall_start_distance", 1.5),
+                spacing=getattr(self.cfg, "high_wall_spacing", 1.8),
                 fill_full_block=getattr(self.cfg, "high_wall_fill_full_block", False),
                 spawn_clearance=getattr(self.cfg, "high_wall_spawn_clearance", 0.8),
             )

@@ -69,3 +69,30 @@ sim2sim 反馈：越障能力确实改善，但高墙翻越能力仍不够，尤
 本次采用保守方案：为 high_wall_terrain 增加 fill_full_block / spawn_clearance 参数。blackW 中开启 high_wall_fill_full_block = True，并设置 high_wall_spawn_clearance = 0.8。高墙仍保留原来出生点前方 start_distance = 1.2、spacing = 1.2 的相位，同时在出生点后方镜像铺设，跳过中心出生点附近 0.8m 范围。对于 8m 地形块，典型相对位置为 -3.6、-2.4、-1.2、1.2、2.4、3.6m。
 
 预期：跨入下一个高墙地形块后更快再次遇到高墙，减少长平地段对高墙训练信号的稀释；同时出生点附近仍保持安全空区，避免 reset 后直接卡墙。观察重点：高墙连续翻越成功率、terrain_level、episode length、collision、torques、低速高墙表现，以及是否因墙密度增加导致训练不稳定。
+
+
+## 9. Jun09_17-55-10_ 周期高墙结果观察
+
+该 run 使用整块周期高墙配置、高墙 target 余量 0.04，以及 high_obstacle_extra_active_time = 0.8，训练到 18000。曲线整体没有崩：mean_episode_length 仍接近 970-980，terrain_level 后期约 4.7-4.8，value_loss 在初期有尖峰后恢复到约 0.18-0.19。
+
+与 Jun09_15-13-47_ 相比，mean_reward 从约 63-66 降到约 60-61，tracking_lin_vel_x / progress 略降，collision、torques、wheel_obstacle_spin 略升，说明周期铺墙确实提高了高墙密度和训练难度，但没有带来非常理想的 sim2sim 提升。当前判断：单纯减少高墙后的长平地稀释，可以增加训练压力，但还不足以解决低速高墙翻越动作本身；策略可能仍缺少更明确的低速高墙接触后姿态/前进脱困信号。
+
+后续不宜继续单纯增加墙密度或 active_time，否则可能只增加 collision / torques。更值得考虑的是降低高墙高度课程斜率、减小最高高墙高度、或给高墙低速卡住时的脱困/通过信号做更精确设计。
+
+
+## 10. wheel_obstacle_lift 加入逐轮 rollover 进度
+
+针对前腿较容易翻过高墙、后腿尤其最后一条腿容易卡住的问题，本次不新增单独的 rollover reward，避免和 wheel_obstacle_lift 重复；而是在现有 wheel_obstacle_lift 内加入逐轮向前滚过障碍的进度调制。
+
+本次改动：新增 wheel_obstacle_lift_start_forward_pos buffer，在每个轮子的 lift 事件触发时记录该轮沿机身 yaw 前向的世界投影位置。触发后计算 rollover_progress = clamp((当前 forward_pos - start_forward_pos) / rollover_distance, 0, 1)，并用 rollover_scale = rollover_base + rollover_weight * rollover_progress 调制原有 height_reward。当前参数为 rollover_distance = 0.16、rollover_base = 0.6、rollover_weight = 0.4。
+
+语义变化：wheel_obstacle_lift 不再只是奖励轮心抬到目标高度，而是保留 60% 的基础抬高/目标高度收益，同时把剩余收益绑定到该轮是否沿机身前向继续滚过约 0.16m。这样最后一条腿如果只抬起但没有真正越过障碍，收益会不完整；如果每条腿都在合适高度附近贴着障碍向前滚过，则获得完整收益。
+
+预期：减少后腿和最后一条腿卡墙，动作更接近一条腿一条腿贴边迈过，而不是前半身过去后拖拽后腿。风险是 reward 变得更挑剔，高墙初期可能变难；若出现通过率下降，可将 rollover_base 提到 0.7、rollover_weight 降到 0.3，保留更多原始 lift 奖励。
+
+## 11. Jun09_23 后期崩溃模型清理
+
+对 Jun09_23-04-32_ 和 Jun09_23-06-12_ 进行后期曲线复查。两者均从 Jun09_17-55-10_ 继续训练到 20000 附近，主要差异是 wheel_obstacle_lift.rollover_distance：Jun09_23-04-32_ 为 0.03，Jun09_23-06-12_ 为 0.05。23-06 从约 19000 开始 value_loss、torques、collision、wheel_obstacle_spin 持续恶化，terrain_level 退到约 4.1，判断为后期崩溃 run；23-04 在 19000 后也有多次 value_loss 冲击，但 19000 checkpoint 实测效果仍可用。
+
+清理决策：保留 Jun09_23-04-32_ 的 model_18050.pt 到 model_19000.pt，删除 model_19050.pt 到 model_20001.pt 共 21 个后期 checkpoint；删除 Jun09_23-06-12_ 整个 run 目录，避免后续误用已经退化的模型。
+

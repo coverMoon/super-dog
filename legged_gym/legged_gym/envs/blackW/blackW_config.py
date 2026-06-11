@@ -370,7 +370,7 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.02
+            over_lift_margin = 0.05
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.5
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
@@ -496,7 +496,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.0025
+        entropy_coef = 0.005
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3
