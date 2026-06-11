@@ -13,6 +13,7 @@ class BlackWEnv(BlackEnv):
     def _init_buffers(self):
         super()._init_buffers()
         self._init_blackW_dof_indices()
+        self._init_blackW_action_scales()
         self._init_blackW_command_curriculum_buffers()
         self._init_blackW_obstacle_lift_buffers()
 
@@ -225,12 +226,41 @@ class BlackWEnv(BlackEnv):
         self._resample_wheel_randomization(all_env_ids)
         self._apply_wheel_friction_randomization(all_env_ids)
 
+    def _init_blackW_action_scales(self):
+        cfg_scale = self.cfg.control.action_scale
+        if isinstance(cfg_scale, dict):
+            action_scale = torch.zeros(self.num_dofs, dtype=torch.float, device=self.device, requires_grad=False)
+            wheel_index_set = set(self.wheel_indices.detach().cpu().tolist())
+            for i, name in enumerate(self.dof_names):
+                if i in wheel_index_set:
+                    continue
+                matched = False
+                for dof_name, scale in cfg_scale.items():
+                    if dof_name in name:
+                        action_scale[i] = float(scale)
+                        matched = True
+                        break
+                if not matched:
+                    raise RuntimeError(f"Action scale of joint {name} was not defined")
+        else:
+            action_scale = torch.full(
+                (self.num_dofs,),
+                float(cfg_scale),
+                dtype=torch.float,
+                device=self.device,
+                requires_grad=False,
+            )
+        self.action_scale = action_scale.unsqueeze(0)
+
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
         if len(env_ids) > 0 and hasattr(self, "wheel_obstacle_lift_timer"):
             self.wheel_obstacle_lift_timer[env_ids] = 0.0
             self.wheel_obstacle_lift_target_z[env_ids] = 0.0
             self.wheel_obstacle_lift_start_z[env_ids] = 0.0
+        if len(env_ids) > 0 and hasattr(self, "last_impact_contacts"):
+            self.last_impact_contacts[env_ids] = False
+            self.prev_feet_vel[env_ids] = 0.0
         self._resample_wheel_randomization(env_ids)
         self._apply_wheel_friction_randomization(env_ids)
 
@@ -291,7 +321,7 @@ class BlackWEnv(BlackEnv):
         raise NameError(f"Unknown wheel control mode: {mode}")
 
     def _compute_torques(self, actions):
-        actions_scaled = actions * self.cfg.control.action_scale
+        actions_scaled = actions * self.action_scale
         actions_scaled[:, self.hip_indices] *= self.cfg.control.hip_reduction
 
         wheel_vel_ref = torch.zeros_like(actions)
@@ -819,6 +849,16 @@ class BlackWEnv(BlackEnv):
             * torch.abs(self.contact_forces[:, self.feet_indices, 2]),
             dim=1,
         )
+
+    def _reward_foot_impact_vel(self):
+        contact = self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.foot_impact_contact_force
+        first_contact = contact & (~self.last_impact_contacts)
+        self.last_impact_contacts[:] = contact
+        impact_vel = torch.clamp(
+            -self.prev_feet_vel[:, :, 2] - self.cfg.rewards.foot_impact_vel_threshold,
+            min=0.0,
+        )
+        return torch.sum(torch.square(impact_vel) * first_contact.float(), dim=1)
 
     def _reward_wheel_lateral_clearance(self):
         cfg = self.cfg.rewards.wheel_lateral_clearance

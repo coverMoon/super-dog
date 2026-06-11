@@ -28,7 +28,11 @@ class BlackWCfg(BlackCfg):
             'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0,
             'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
         }
-        action_scale = 0.25
+        action_scale = {
+            'FL_hip_joint': 0.25, 'RL_hip_joint': 0.25, 'FR_hip_joint': 0.25, 'RR_hip_joint': 0.25,
+            'FL_thigh_joint': 0.25, 'RL_thigh_joint': 0.25, 'FR_thigh_joint': 0.25, 'RR_thigh_joint': 0.25,
+            'FL_calf_joint': 0.3, 'RL_calf_joint': 0.3, 'FR_calf_joint': 0.3, 'RR_calf_joint': 0.3,
+        }
         decimation = 4
         hip_reduction = 1.0
 
@@ -109,7 +113,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.1, 0.2, 0.2, 0.1, 0.0, 0.0, 0.0, 0.2]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.0, 0.0, 0.0, 0.3]
         high_wall_fill_full_block = True
         high_wall_spawn_clearance = 0.8
         slope_treshold = 0.75
@@ -279,6 +283,8 @@ class BlackWCfg(BlackCfg):
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
         feet_stumble_ratio = 3.0
+        foot_impact_contact_force = 1.0
+        foot_impact_vel_threshold = 0.2
 
         hip_default_cmd_min_scale = 0.5
         hip_default_y_ref = 0.5
@@ -362,7 +368,7 @@ class BlackWCfg(BlackCfg):
             obstacle_height_threshold = 0.035
             clearance_margin = 0.05
             high_obstacle_height_threshold = 0.18
-            high_obstacle_clearance_margin = 0.04
+            high_obstacle_clearance_margin = 0.05
             high_obstacle_active_height_span = 0.18
             high_obstacle_extra_active_time = 0.8
             min_lift_height = 0.05
@@ -372,7 +378,7 @@ class BlackWCfg(BlackCfg):
             target_sigma = 0.05
             over_lift_margin = 0.05
             over_lift_sigma = 0.04
-            over_lift_penalty_weight = 0.5
+            over_lift_penalty_weight = 0.0
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
@@ -387,7 +393,7 @@ class BlackWCfg(BlackCfg):
         class wheel_lateral_clearance:
             command_threshold = 0.18
             full_command_threshold = 0.45
-            target_extra_height = 0.015
+            target_extra_height = 0.02
             tracking_sigma = 0.025
             top_k = 2
             terrain_variability_clip = 0.30
@@ -423,6 +429,7 @@ class BlackWCfg(BlackCfg):
             # 接触碰撞、绊脚与越障相关项。
             collision = -1.0
             feet_stumble = -0.1
+            foot_impact_vel = -0.02
             wheel_obstacle_lift = 1.5
             wheel_obstacle_spin = -0.1
             wheel_lateral_clearance = 0.45
@@ -449,7 +456,6 @@ class BlackWCfg(BlackCfg):
             hip_pos = -0.0
             all_joint_pos = -0.0
             foot_slip = -0.0
-            foot_impact_vel = -0.0
             raibert = 0.0
 
     class viewer(BlackCfg.viewer):
@@ -496,7 +502,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.005
+        entropy_coef = 0.003
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3
