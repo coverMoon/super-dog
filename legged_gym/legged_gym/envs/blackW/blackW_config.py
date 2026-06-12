@@ -17,21 +17,33 @@ class BlackWCfg(BlackCfg):
     class control(BlackCfg.control):
         control_type = 'P'
         stiffness = {
-            'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
-            'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
-            'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
+            'FL_hip_joint': 50.0, 'RL_hip_joint': 50.0, 'FR_hip_joint': 50.0, 'RR_hip_joint': 50.0,
+            'FL_thigh_joint': 50.0, 'RL_thigh_joint': 50.0, 'FR_thigh_joint': 50.0, 'RR_thigh_joint': 50.0,
+            'FL_calf_joint': 50.0, 'RL_calf_joint': 50.0, 'FR_calf_joint': 50.0, 'RR_calf_joint': 50.0,
             'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
         }
         damping = {
-            'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
-            'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
-            'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0,
+            'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
+            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
+            'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2,
             'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
         }
+        # stiffness = {
+        #     'FL_hip_joint': 40.0, 'RL_hip_joint': 40.0, 'FR_hip_joint': 40.0, 'RR_hip_joint': 40.0,
+        #     'FL_thigh_joint': 40.0, 'RL_thigh_joint': 40.0, 'FR_thigh_joint': 40.0, 'RR_thigh_joint': 40.0,
+        #     'FL_calf_joint': 40.0, 'RL_calf_joint': 40.0, 'FR_calf_joint': 40.0, 'RR_calf_joint': 40.0,
+        #     'FL_wheel_joint': 0.0, 'RL_wheel_joint': 0.0, 'FR_wheel_joint': 0.0, 'RR_wheel_joint': 0.0,
+        # }
+        # damping = {
+        #     'FL_hip_joint': 1.0, 'RL_hip_joint': 1.0, 'FR_hip_joint': 1.0, 'RR_hip_joint': 1.0,
+        #     'FL_thigh_joint': 1.0, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.0, 'RR_thigh_joint': 1.0,
+        #     'FL_calf_joint': 1.0, 'RL_calf_joint': 1.0, 'FR_calf_joint': 1.0, 'RR_calf_joint': 1.0,
+        #     'FL_wheel_joint': 1.0, 'RL_wheel_joint': 1.0, 'FR_wheel_joint': 1.0, 'RR_wheel_joint': 1.0,
+        # }
         action_scale = {
             'FL_hip_joint': 0.25, 'RL_hip_joint': 0.25, 'FR_hip_joint': 0.25, 'RR_hip_joint': 0.25,
             'FL_thigh_joint': 0.25, 'RL_thigh_joint': 0.25, 'FR_thigh_joint': 0.25, 'RR_thigh_joint': 0.25,
-            'FL_calf_joint': 0.3, 'RL_calf_joint': 0.3, 'FR_calf_joint': 0.3, 'RR_calf_joint': 0.3,
+            'FL_calf_joint': 0.25, 'RL_calf_joint': 0.25, 'FR_calf_joint': 0.25, 'RR_calf_joint': 0.25,
         }
         decimation = 4
         hip_reduction = 1.0
@@ -430,8 +442,8 @@ class BlackWCfg(BlackCfg):
             collision = -1.0
             feet_stumble = -0.1
             foot_impact_vel = -0.02
-            wheel_obstacle_lift = 1.5
-            wheel_obstacle_spin = -0.1
+            wheel_obstacle_lift = 1.75
+            wheel_obstacle_spin = -0.3
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
