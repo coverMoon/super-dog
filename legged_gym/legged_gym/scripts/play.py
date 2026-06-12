@@ -101,9 +101,10 @@ def play(args, x_vel=0.0, y_vel=0.5, yaw_vel=0.0):
             env.set_camera(camera_position, camera_position + camera_direction)
 
         if i < stop_state_log:
+            action_scale = env.action_scale[0, joint_index].item() if hasattr(env, "action_scale") else env.cfg.control.action_scale
             logger.log_states(
                 {
-                    'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale + env.default_dof_pos[robot_index, joint_index].item(),
+                    'dof_pos_target': actions[robot_index, joint_index].item() * action_scale + env.default_dof_pos[robot_index, joint_index].item(),
                     'dof_pos': env.dof_pos[robot_index, joint_index].item(),
                     'dof_vel': env.dof_vel[robot_index, joint_index].item(),
                     'dof_torque': env.torques[robot_index, joint_index].item(),
