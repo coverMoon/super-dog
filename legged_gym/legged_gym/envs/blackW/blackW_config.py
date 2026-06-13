@@ -201,10 +201,13 @@ class BlackWCfg(BlackCfg):
         hip_damping_scale_range = [0.8, 1.5]
 
         randomize_calf_backlash = True
-        # B-stage sim2real approximation for calf linkage/gear play. The
-        # hysteresis mode consumes lost motion only after target direction changes.
-        calf_backlash_mode = "hysteresis"
-        calf_backlash_range = [0.01, 0.03]
+        # B2 sim2real approximation for calf linkage/gear play. The play mode
+        # keeps the effective target inside a backlash window and weakens Kp in free play.
+        calf_backlash_mode = "play"
+        calf_backlash_range = [0.005, 0.02]
+        calf_backlash_min_kp_scale = 0.15
+        calf_backlash_engage_start = 0.6
+        calf_backlash_leak = 0.02
 
         randomize_kp = True
         kp_range = [0.9, 1.1]

@@ -361,6 +361,34 @@ class BlackWEnv(BlackEnv):
                 torch.sign(calf_pos_err)
                 * torch.clamp(torch.abs(calf_pos_err) - self.calf_backlash_widths, min=0.0)
             )
+
+        if mode == "play":
+            widths = torch.clamp(self.calf_backlash_widths, min=1e-6)
+            leak = float(getattr(self.cfg.domain_rand, "calf_backlash_leak", 0.0))
+            if leak > 0.0:
+                self.calf_backlash_effective_targets += leak * (calf_targets - self.calf_backlash_effective_targets)
+            lower = calf_targets - widths
+            upper = calf_targets + widths
+            self.calf_backlash_effective_targets = torch.max(
+                torch.min(self.calf_backlash_effective_targets, upper), lower
+            )
+            gap_ratio = torch.clamp(
+                torch.abs(calf_targets - self.calf_backlash_effective_targets) / widths, min=0.0, max=1.0
+            )
+            engage_start = float(getattr(self.cfg.domain_rand, "calf_backlash_engage_start", 0.6))
+            engage_span = max(1.0 - engage_start, 1e-6)
+            engage = torch.clamp((gap_ratio - engage_start) / engage_span, min=0.0, max=1.0)
+            min_kp_scale = float(getattr(self.cfg.domain_rand, "calf_backlash_min_kp_scale", 0.15))
+            kp_scale = min_kp_scale + (1.0 - min_kp_scale) * engage
+            target_delta = calf_targets - self.calf_backlash_last_targets
+            delta_sign = torch.sign(target_delta)
+            self.calf_backlash_last_targets = calf_targets.clone()
+            self.calf_backlash_remaining = torch.clamp(
+                widths - torch.abs(calf_targets - self.calf_backlash_effective_targets), min=0.0
+            )
+            self.calf_backlash_dirs = torch.where(delta_sign != 0.0, delta_sign, self.calf_backlash_dirs)
+            return (self.calf_backlash_effective_targets - self.dof_pos[:, self.calf_indices]) * kp_scale
+
         if mode != "hysteresis":
             raise NameError(f"Unknown calf backlash mode: {mode}")
 
