@@ -200,6 +200,11 @@ class BlackWCfg(BlackCfg):
         randomize_hip_damping = True
         hip_damping_scale_range = [0.8, 1.5]
 
+        randomize_calf_backlash = True
+        # A-stage sim2real approximation for calf linkage/gear play. This is a
+        # symmetric torque deadzone on calf position error, not direction hysteresis.
+        calf_backlash_range = [0.01, 0.08]
+
         randomize_kp = True
         kp_range = [0.9, 1.1]
 
@@ -380,7 +385,7 @@ class BlackWCfg(BlackCfg):
             obstacle_height_threshold = 0.035
             clearance_margin = 0.05
             high_obstacle_height_threshold = 0.18
-            high_obstacle_clearance_margin = 0.05
+            high_obstacle_clearance_margin = 0.03
             high_obstacle_active_height_span = 0.18
             high_obstacle_extra_active_time = 0.8
             min_lift_height = 0.05
@@ -390,7 +395,7 @@ class BlackWCfg(BlackCfg):
             target_sigma = 0.05
             over_lift_margin = 0.05
             over_lift_sigma = 0.04
-            over_lift_penalty_weight = 0.0
+            over_lift_penalty_weight = 0.1
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
@@ -514,7 +519,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.003
+        entropy_coef = 0.005
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3

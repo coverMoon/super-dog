@@ -41,6 +41,13 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
+        self.calf_backlash_widths = torch.zeros(
+            self.num_envs,
+            len(self.calf_indices),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
 
     def _resample_wheel_randomization(self, env_ids):
         if len(env_ids) == 0 or not hasattr(self, "wheel_vel_ref_scales"):
@@ -85,6 +92,14 @@ class BlackWEnv(BlackEnv):
             )
         else:
             self.hip_motor_strength_factors[env_ids] = 1.0
+
+        if getattr(self.cfg.domain_rand, "randomize_calf_backlash", False):
+            backlash_range = getattr(self.cfg.domain_rand, "calf_backlash_range", [0.0, 0.0])
+            self.calf_backlash_widths[env_ids] = torch_rand_float(
+                backlash_range[0], backlash_range[1], (len(env_ids), len(self.calf_indices)), device=self.device
+            )
+        else:
+            self.calf_backlash_widths[env_ids] = 0.0
 
     def _init_blackW_wheel_shape_indices(self):
         shape_ranges = self.gym.get_actor_rigid_body_shape_indices(self.envs[0], self.actor_handles[0])
@@ -163,6 +178,7 @@ class BlackWEnv(BlackEnv):
             wheel_names.extend([name for name in self.dof_names if key in name])
 
         hip_names = [name for name in self.dof_names if "hip_joint" in name]
+        calf_names = [name for name in self.dof_names if "calf_joint" in name]
         self.wheel_indices = torch.tensor(
             [self.dof_names.index(name) for name in wheel_names],
             dtype=torch.long,
@@ -171,6 +187,12 @@ class BlackWEnv(BlackEnv):
         )
         self.hip_indices = torch.tensor(
             [self.dof_names.index(name) for name in hip_names],
+            dtype=torch.long,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.calf_indices = torch.tensor(
+            [self.dof_names.index(name) for name in calf_names],
             dtype=torch.long,
             device=self.device,
             requires_grad=False,
@@ -210,6 +232,8 @@ class BlackWEnv(BlackEnv):
             raise RuntimeError(f"Expected 4 wheel joints, got {len(self.wheel_indices)} from {self.dof_names}")
         if len(self.hip_indices) != 4:
             raise RuntimeError(f"Expected 4 hip joints, got {len(self.hip_indices)} from {self.dof_names}")
+        if len(self.calf_indices) != 4:
+            raise RuntimeError(f"Expected 4 calf joints, got {len(self.calf_indices)} from {self.dof_names}")
         if len(self.wheel_body_indices) != 4:
             raise RuntimeError(f"Expected 4 wheel bodies, got {len(self.wheel_body_indices)} from {self.body_names}")
 
@@ -217,6 +241,7 @@ class BlackWEnv(BlackEnv):
         print("### blackW wheel indices:", self.wheel_indices.detach().cpu().tolist())
         print("### blackW wheel body indices:", self.wheel_body_indices.detach().cpu().tolist())
         print("### blackW hip indices:", self.hip_indices.detach().cpu().tolist())
+        print("### blackW calf indices:", self.calf_indices.detach().cpu().tolist())
         print("### blackW wheel forward sign:", self.wheel_forward_sign.detach().cpu().tolist())
         print("### blackW wheel control mode:", self.cfg.control.wheel_control_mode)
 
@@ -329,6 +354,12 @@ class BlackWEnv(BlackEnv):
 
         pos_err = self.default_dof_pos + actions_scaled - self.dof_pos
         pos_err[:, self.wheel_indices] = 0.0
+        if getattr(self.cfg.domain_rand, "randomize_calf_backlash", False):
+            calf_pos_err = pos_err[:, self.calf_indices]
+            pos_err[:, self.calf_indices] = (
+                torch.sign(calf_pos_err)
+                * torch.clamp(torch.abs(calf_pos_err) - self.calf_backlash_widths, min=0.0)
+            )
 
         if self.cfg.control.control_type == "P":
             torques = self.p_gains * self.Kp_factors * pos_err - self.d_gains * self.Kd_factors * self.dof_vel
