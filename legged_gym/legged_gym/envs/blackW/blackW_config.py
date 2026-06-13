@@ -201,9 +201,10 @@ class BlackWCfg(BlackCfg):
         hip_damping_scale_range = [0.8, 1.5]
 
         randomize_calf_backlash = True
-        # A-stage sim2real approximation for calf linkage/gear play. This is a
-        # symmetric torque deadzone on calf position error, not direction hysteresis.
-        calf_backlash_range = [0.01, 0.08]
+        # B-stage sim2real approximation for calf linkage/gear play. The
+        # hysteresis mode consumes lost motion only after target direction changes.
+        calf_backlash_mode = "hysteresis"
+        calf_backlash_range = [0.01, 0.03]
 
         randomize_kp = True
         kp_range = [0.9, 1.1]

@@ -48,6 +48,10 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
+        self.calf_backlash_effective_targets = torch.zeros_like(self.calf_backlash_widths)
+        self.calf_backlash_last_targets = torch.zeros_like(self.calf_backlash_widths)
+        self.calf_backlash_remaining = torch.zeros_like(self.calf_backlash_widths)
+        self.calf_backlash_dirs = torch.zeros_like(self.calf_backlash_widths)
 
     def _resample_wheel_randomization(self, env_ids):
         if len(env_ids) == 0 or not hasattr(self, "wheel_vel_ref_scales"):
@@ -100,6 +104,11 @@ class BlackWEnv(BlackEnv):
             )
         else:
             self.calf_backlash_widths[env_ids] = 0.0
+        default_calf_targets = self.default_dof_pos[:, self.calf_indices].expand(len(env_ids), -1)
+        self.calf_backlash_effective_targets[env_ids] = default_calf_targets
+        self.calf_backlash_last_targets[env_ids] = default_calf_targets
+        self.calf_backlash_remaining[env_ids] = 0.0
+        self.calf_backlash_dirs[env_ids] = 0.0
 
     def _init_blackW_wheel_shape_indices(self):
         shape_ranges = self.gym.get_actor_rigid_body_shape_indices(self.envs[0], self.actor_handles[0])
@@ -345,6 +354,30 @@ class BlackWEnv(BlackEnv):
             return self._target_wheel_velocities() + residual + self.wheel_vel_ref_biases
         raise NameError(f"Unknown wheel control mode: {mode}")
 
+    def _apply_calf_backlash(self, calf_targets, calf_pos_err):
+        mode = getattr(self.cfg.domain_rand, "calf_backlash_mode", "deadzone")
+        if mode == "deadzone":
+            return (
+                torch.sign(calf_pos_err)
+                * torch.clamp(torch.abs(calf_pos_err) - self.calf_backlash_widths, min=0.0)
+            )
+        if mode != "hysteresis":
+            raise NameError(f"Unknown calf backlash mode: {mode}")
+
+        target_delta = calf_targets - self.calf_backlash_last_targets
+        delta_sign = torch.sign(target_delta)
+        moving = delta_sign != 0.0
+        reversing = moving & (self.calf_backlash_dirs != 0.0) & (delta_sign != self.calf_backlash_dirs)
+        remaining = torch.where(reversing, self.calf_backlash_widths, self.calf_backlash_remaining)
+        abs_delta = torch.abs(target_delta)
+        transmitted_delta = torch.sign(target_delta) * torch.clamp(abs_delta - remaining, min=0.0)
+
+        self.calf_backlash_effective_targets += transmitted_delta
+        self.calf_backlash_remaining = torch.clamp(remaining - abs_delta, min=0.0)
+        self.calf_backlash_dirs = torch.where(moving, delta_sign, self.calf_backlash_dirs)
+        self.calf_backlash_last_targets = calf_targets.clone()
+        return self.calf_backlash_effective_targets - self.dof_pos[:, self.calf_indices]
+
     def _compute_torques(self, actions):
         actions_scaled = actions * self.action_scale
         actions_scaled[:, self.hip_indices] *= self.cfg.control.hip_reduction
@@ -352,14 +385,13 @@ class BlackWEnv(BlackEnv):
         wheel_vel_ref = torch.zeros_like(actions)
         wheel_vel_ref[:, self.wheel_indices] = self._compute_wheel_vel_ref(actions)
 
-        pos_err = self.default_dof_pos + actions_scaled - self.dof_pos
+        pos_targets = self.default_dof_pos + actions_scaled
+        pos_err = pos_targets - self.dof_pos
         pos_err[:, self.wheel_indices] = 0.0
         if getattr(self.cfg.domain_rand, "randomize_calf_backlash", False):
+            calf_targets = pos_targets[:, self.calf_indices]
             calf_pos_err = pos_err[:, self.calf_indices]
-            pos_err[:, self.calf_indices] = (
-                torch.sign(calf_pos_err)
-                * torch.clamp(torch.abs(calf_pos_err) - self.calf_backlash_widths, min=0.0)
-            )
+            pos_err[:, self.calf_indices] = self._apply_calf_backlash(calf_targets, calf_pos_err)
 
         if self.cfg.control.control_type == "P":
             torques = self.p_gains * self.Kp_factors * pos_err - self.d_gains * self.Kd_factors * self.dof_vel
