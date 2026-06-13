@@ -204,7 +204,7 @@ class BlackWCfg(BlackCfg):
         # B2 sim2real approximation for calf linkage/gear play. The play mode
         # keeps the effective target inside a backlash window and weakens Kp in free play.
         calf_backlash_mode = "play"
-        calf_backlash_range = [0.005, 0.02]
+        calf_backlash_range = [0.005, 0.03]
         calf_backlash_min_kp_scale = 0.15
         calf_backlash_engage_start = 0.6
         calf_backlash_leak = 0.02
@@ -437,6 +437,7 @@ class BlackWCfg(BlackCfg):
             orientation = -3.0
             roll_orientation = -0.0
             base_height = -5.0
+            dof_pos_limits = -0.5
 
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
@@ -470,7 +471,6 @@ class BlackWCfg(BlackCfg):
             joint_power = -0.0
             foot_clearance = -0.0
             feet_air_time = 0.0
-            dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 0.0

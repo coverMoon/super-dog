@@ -920,6 +920,13 @@ class BlackWEnv(BlackEnv):
         wheel_vel = self.dof_vel[:, self.wheel_indices]
         return torch.sum(torch.square(wheel_vel), dim=1) * self._stand_wheel_command_mask()
 
+    def _reward_dof_pos_limits(self):
+        dof_pos = self.dof_pos[:, self.leg_dof_indices]
+        limits = self.dof_pos_limits[self.leg_dof_indices]
+        out_of_limits = -(dof_pos - limits[:, 0]).clip(max=0.0)
+        out_of_limits += (dof_pos - limits[:, 1]).clip(min=0.0)
+        return torch.sum(out_of_limits, dim=1)
+
     def _reward_torques(self):
         return torch.sum(torch.square(self.torques), dim=1)
 
