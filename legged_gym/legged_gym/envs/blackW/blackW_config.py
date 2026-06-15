@@ -204,8 +204,8 @@ class BlackWCfg(BlackCfg):
         # B2 sim2real approximation for calf linkage/gear play. The play mode
         # keeps the effective target inside a backlash window and weakens Kp in free play.
         calf_backlash_mode = "play"
-        calf_backlash_range = [0.005, 0.03]
-        calf_backlash_min_kp_scale = 0.15
+        calf_backlash_range = [0.005, 0.035]
+        calf_backlash_min_kp_scale = 0.12
         calf_backlash_engage_start = 0.6
         calf_backlash_leak = 0.02
 
@@ -288,6 +288,7 @@ class BlackWCfg(BlackCfg):
         tracking_sigma = 0.25
 
         soft_dof_pos_limit = 1.0
+        dof_pos_limit_margin_ratio = 0.10
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
 
@@ -384,7 +385,7 @@ class BlackWCfg(BlackCfg):
             max_approach_speed = 0.4
 
         class wheel_obstacle_lift:
-            horizontal_force_threshold = 25.0
+            horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.035
             clearance_margin = 0.05
@@ -397,15 +398,18 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.05
+            over_lift_margin = 0.025
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.1
+            diag_rear_lift_suppress_time = 0.3
+            diag_rear_lift_suppress_height = 0.05
+            diag_rear_lift_suppress_sigma = 0.05
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
         class wheel_obstacle_spin:
             terrain_types = [3, 4, 9]
-            horizontal_force_threshold = 25.0
+            horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.035
             spin_threshold = 6.0
@@ -427,7 +431,7 @@ class BlackWCfg(BlackCfg):
             # 指令跟踪与前向推进奖励。
             tracking_lin_vel_x = 1.5
             tracking_lin_vel_y = 1.5
-            tracking_ang_vel = 1.25
+            tracking_ang_vel = 1.5
             progress = 1.0
 
             # Base posture and body stability.
@@ -437,7 +441,7 @@ class BlackWCfg(BlackCfg):
             orientation = -3.0
             roll_orientation = -0.0
             base_height = -5.0
-            dof_pos_limits = -0.5
+            dof_pos_limits = -0.1
 
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
@@ -453,12 +457,13 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.1
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 1.75
+            wheel_obstacle_rear_suppress = -0.08
             wheel_obstacle_spin = -0.3
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
-            action_rate = -0.06
+            action_rate = -0.08
             smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
