@@ -125,7 +125,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.0, 0.0, 0.0, 0.3]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.3, 0.1, 0.1, 0.0, 0.0, 0.0, 0.2]
         high_wall_fill_full_block = True
         high_wall_spawn_clearance = 0.8
         slope_treshold = 0.75
@@ -392,7 +392,7 @@ class BlackWCfg(BlackCfg):
             high_obstacle_height_threshold = 0.18
             high_obstacle_clearance_margin = 0.03
             high_obstacle_active_height_span = 0.18
-            high_obstacle_extra_active_time = 0.8
+            high_obstacle_extra_active_time = 1.2
             min_lift_height = 0.05
             min_progress_span = 0.03
             active_time = 0.8
@@ -431,7 +431,7 @@ class BlackWCfg(BlackCfg):
             # 指令跟踪与前向推进奖励。
             tracking_lin_vel_x = 1.5
             tracking_lin_vel_y = 1.5
-            tracking_ang_vel = 1.5
+            tracking_ang_vel = 2.0
             progress = 1.0
 
             # Base posture and body stability.
@@ -441,7 +441,7 @@ class BlackWCfg(BlackCfg):
             orientation = -3.0
             roll_orientation = -0.0
             base_height = -5.0
-            dof_pos_limits = -0.1
+            dof_pos_limits = -0.2
 
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
@@ -458,12 +458,12 @@ class BlackWCfg(BlackCfg):
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 1.75
             wheel_obstacle_rear_suppress = -0.08
-            wheel_obstacle_spin = -0.3
+            wheel_obstacle_spin = -0.5
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
-            action_rate = -0.08
+            action_rate = -0.09
             smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
@@ -528,7 +528,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.005
+        entropy_coef = 0.004
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3

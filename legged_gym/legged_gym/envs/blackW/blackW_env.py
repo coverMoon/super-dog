@@ -1125,11 +1125,20 @@ class BlackWEnv(BlackEnv):
             & (self.wheel_obstacle_lift_elapsed[:, front_ids] <= cfg.diag_rear_lift_suppress_time)
         )
         diag_inactive = self.wheel_obstacle_lift_timer[:, diag_ids] <= 0.0
-        gate = front_early & diag_inactive & high_wall_envs.unsqueeze(1)
 
         wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
-        diag_pos = wheel_states[:, diag_ids, :3]
+        wheel_pos = wheel_states[:, :, :3]
+        diag_pos = wheel_pos[:, diag_ids, :]
+        diag_contact_forces = self.contact_forces[:, self.wheel_body_indices[diag_ids], :]
+        diag_horizontal_force = torch.norm(diag_contact_forces[:, :, :2], dim=2)
+        diag_contact_gate = diag_horizontal_force > cfg.horizontal_force_threshold
+        diag_obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)[:, diag_ids]
         diag_ground = self._sample_terrain_heights_at_points(diag_pos[:, :, :2], reduce="min")
+        diag_obstacle_rel_height = diag_obstacle_height - diag_ground
+        diag_obstacle_gate = diag_obstacle_rel_height > cfg.obstacle_height_threshold
+        diag_blocked = diag_contact_gate & diag_obstacle_gate
+        gate = front_early & diag_inactive & ~diag_blocked & high_wall_envs.unsqueeze(1)
+
         allowed_z = diag_ground + self.cfg.control.wheel_radius + cfg.diag_rear_lift_suppress_height
         excess = torch.clamp(diag_pos[:, :, 2] - allowed_z, min=0.0)
         sigma = max(cfg.diag_rear_lift_suppress_sigma, 1e-6)
