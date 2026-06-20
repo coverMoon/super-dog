@@ -387,7 +387,7 @@ class BlackWCfg(BlackCfg):
         class wheel_obstacle_lift:
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
-            obstacle_height_threshold = 0.035
+            obstacle_height_threshold = 0.025
             clearance_margin = 0.05
             high_obstacle_height_threshold = 0.18
             high_obstacle_clearance_margin = 0.03
@@ -411,9 +411,21 @@ class BlackWCfg(BlackCfg):
             terrain_types = [3, 4, 9]
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
-            obstacle_height_threshold = 0.035
-            spin_threshold = 6.0
-            progress_threshold = 0.25
+            obstacle_height_threshold = 0.02
+            slip_speed_sigma = 0.25
+            progress_speed_sigma = 0.4
+
+        class difficult_posture_hold:
+            terrain_types = [3]
+            command_x_threshold = 0.2
+            command_y_threshold = 0.1
+            command_yaw_threshold = 0.15
+            joint_margin = 0.1
+            front_lift_scale = 0.3
+            # Current x-forward/y-left convention: positive projected-gravity x is nose-down.
+            forward_pitch_sign = 1.0
+            pitch_start = 0.08
+            pitch_full = 0.20
 
         class wheel_lateral_clearance:
             command_threshold = 0.18
@@ -457,8 +469,9 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.1
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 1.75
+            difficult_posture_hold = -0.3
             wheel_obstacle_rear_suppress = -0.08
-            wheel_obstacle_spin = -0.5
+            wheel_obstacle_spin = -1.5
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
@@ -479,7 +492,7 @@ class BlackWCfg(BlackCfg):
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 0.0
-            hip_pos = -0.0
+            hip_pos = -0.0 
             all_joint_pos = -0.0
             foot_slip = -0.0
             raibert = 0.0
@@ -528,7 +541,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.004
+        entropy_coef = 0.0035
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3

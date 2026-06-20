@@ -214,6 +214,24 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
+        self.front_sagittal_dof_indices = torch.tensor(
+            [
+                [self.dof_names.index(f"{prefix}_thigh_joint"), self.dof_names.index(f"{prefix}_calf_joint")]
+                for prefix in ("FL", "FR")
+            ],
+            dtype=torch.long,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.rear_sagittal_dof_indices = torch.tensor(
+            [
+                [self.dof_names.index(f"{prefix}_thigh_joint"), self.dof_names.index(f"{prefix}_calf_joint")]
+                for prefix in ("RL", "RR")
+            ],
+            dtype=torch.long,
+            device=self.device,
+            requires_grad=False,
+        )
         self.wheel_forward_sign = torch.tensor(
             self._resolve_wheel_forward_sign(wheel_names),
             dtype=torch.float,
@@ -1118,29 +1136,18 @@ class BlackWEnv(BlackEnv):
         if not torch.any(high_wall_envs):
             return torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
 
-        front_ids = self.front_wheel_lift_indices
-        diag_ids = self.diag_rear_wheel_lift_indices
-        front_early = (
-            (self.wheel_obstacle_lift_timer[:, front_ids] > 0.0)
-            & (self.wheel_obstacle_lift_elapsed[:, front_ids] <= cfg.diag_rear_lift_suppress_time)
-        )
-        diag_inactive = self.wheel_obstacle_lift_timer[:, diag_ids] <= 0.0
-
         wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
         wheel_pos = wheel_states[:, :, :3]
-        diag_pos = wheel_pos[:, diag_ids, :]
-        diag_contact_forces = self.contact_forces[:, self.wheel_body_indices[diag_ids], :]
-        diag_horizontal_force = torch.norm(diag_contact_forces[:, :, :2], dim=2)
-        diag_contact_gate = diag_horizontal_force > cfg.horizontal_force_threshold
-        diag_obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)[:, diag_ids]
-        diag_ground = self._sample_terrain_heights_at_points(diag_pos[:, :, :2], reduce="min")
-        diag_obstacle_rel_height = diag_obstacle_height - diag_ground
-        diag_obstacle_gate = diag_obstacle_rel_height > cfg.obstacle_height_threshold
-        diag_blocked = diag_contact_gate & diag_obstacle_gate
-        gate = front_early & diag_inactive & ~diag_blocked & high_wall_envs.unsqueeze(1)
+        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
+        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
 
-        allowed_z = diag_ground + self.cfg.control.wheel_radius + cfg.diag_rear_lift_suppress_height
-        excess = torch.clamp(diag_pos[:, :, 2] - allowed_z, min=0.0)
+        lift_inactive = self.wheel_obstacle_lift_timer <= 0.0
+        no_horizontal_load = horizontal_force <= cfg.horizontal_force_threshold
+        gate = lift_inactive & no_horizontal_load & high_wall_envs.unsqueeze(1)
+
+        wheel_ground = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
+        allowed_z = wheel_ground + self.cfg.control.wheel_radius + cfg.diag_rear_lift_suppress_height
+        excess = torch.clamp(wheel_pos[:, :, 2] - allowed_z, min=0.0)
         sigma = max(cfg.diag_rear_lift_suppress_sigma, 1e-6)
         return torch.sum(torch.square(excess / sigma) * gate.float(), dim=1)
 
@@ -1150,15 +1157,18 @@ class BlackWEnv(BlackEnv):
         wheel_pos = wheel_states[:, :, :3]
         wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
         horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
-        contact_gate = horizontal_force > cfg.horizontal_force_threshold
+        contact_scale = torch.clamp(horizontal_force / max(cfg.horizontal_force_threshold, 1e-6), min=0.0, max=1.0)
 
         obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
         ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
-        obstacle_rel_height = obstacle_height - ground_height
-        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+        obstacle_rel_height = torch.clamp(obstacle_height - ground_height, min=0.0)
+        obstacle_scale = torch.clamp(obstacle_rel_height / max(cfg.obstacle_height_threshold, 1e-6), min=0.0, max=1.0)
 
-        command_gate = self.commands[:, 0:1] > cfg.command_threshold
-        progress_gate = self.base_lin_vel[:, 0:1] < cfg.progress_threshold
+        command_x = torch.clamp(self.commands[:, 0:1], min=0.0)
+        command_scale = torch.clamp(command_x / max(cfg.command_threshold, 1e-6), min=0.0, max=1.0)
+        forward_speed = torch.clamp(self.base_lin_vel[:, 0:1], min=0.0)
+        progress_deficit = torch.clamp(command_x - forward_speed, min=0.0)
+        progress_scale = torch.clamp(progress_deficit / max(cfg.progress_speed_sigma, 1e-6), min=0.0, max=1.0)
 
         terrain_types = getattr(cfg, "terrain_types", [])
         if len(terrain_types) > 0:
@@ -1169,10 +1179,11 @@ class BlackWEnv(BlackEnv):
         else:
             terrain_gate = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
 
-        wheel_spin = torch.clamp(torch.abs(self.dof_vel[:, self.wheel_indices]) - cfg.spin_threshold, min=0.0)
-        spin_penalty = torch.square(wheel_spin)
-        gate = contact_gate & obstacle_gate & command_gate & progress_gate & terrain_gate.unsqueeze(1)
-        return torch.sum(spin_penalty * gate.float(), dim=1)
+        wheel_surface_speed = torch.abs(self.dof_vel[:, self.wheel_indices]) * self.cfg.control.wheel_radius
+        slip_speed = torch.clamp(wheel_surface_speed - forward_speed, min=0.0)
+        slip_penalty = torch.square(slip_speed / max(cfg.slip_speed_sigma, 1e-6))
+        penalty_scale = contact_scale * obstacle_scale * command_scale * progress_scale * terrain_gate.unsqueeze(1).float()
+        return torch.sum(slip_penalty * penalty_scale, dim=1)
 
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
@@ -1224,4 +1235,41 @@ class BlackWEnv(BlackEnv):
         y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
         yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
         return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small & yaw_small).float()
+
+    def _reward_difficult_posture_hold(self):
+        cfg = self.cfg.rewards.difficult_posture_hold
+
+        terrain_type_ids = self._get_terrain_type_ids()
+        terrain_gate = torch.zeros_like(terrain_type_ids, dtype=torch.bool)
+        for terrain_type in cfg.terrain_types:
+            terrain_gate |= terrain_type_ids == int(terrain_type)
+
+        command_gate = (
+            (self.commands[:, 0] > cfg.command_x_threshold)
+            & (torch.abs(self.commands[:, 1]) < cfg.command_y_threshold)
+            & (torch.abs(self.commands[:, 2]) < cfg.command_yaw_threshold)
+        )
+
+        forward_pitch = self.projected_gravity[:, 0] * cfg.forward_pitch_sign
+        pitch_span = max(cfg.pitch_full - cfg.pitch_start, 1e-6)
+        pitch_scale = torch.clamp((forward_pitch - cfg.pitch_start) / pitch_span, min=0.0, max=1.0)
+
+        joint_excess = torch.clamp(
+            torch.abs(self.dof_pos - self.default_dof_pos) - cfg.joint_margin,
+            min=0.0,
+        )
+        rear_excess = torch.sum(joint_excess[:, self.rear_sagittal_dof_indices], dim=(1, 2))
+
+        front_excess = joint_excess[:, self.front_sagittal_dof_indices]
+        front_lift_active = self.wheel_obstacle_lift_timer[:, self.front_wheel_lift_indices] > 0.0
+        front_scale = torch.where(
+            front_lift_active,
+            torch.full_like(front_excess[:, :, 0], cfg.front_lift_scale),
+            torch.ones_like(front_excess[:, :, 0]),
+        )
+        front_excess = torch.sum(front_excess * front_scale.unsqueeze(2), dim=(1, 2))
+
+        posture_excess = rear_excess + front_excess
+        gate = terrain_gate & command_gate
+        return posture_excess * pitch_scale * gate.float()
 
