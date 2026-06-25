@@ -301,7 +301,6 @@ class BlackWCfg(BlackCfg):
         run_still_x_threshold = 0.1 # 大于时触发
         run_still_y_threshold = 0.1 # 小于时触发
         run_still_yaw_threshold = 0.15 # 小于时触发
-        stairs_run_still_terrain_types = [3]
 
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
@@ -404,9 +403,8 @@ class BlackWCfg(BlackCfg):
             over_lift_margin = 0.03
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.1
-            diag_rear_lift_suppress_time = 0.3
-            diag_rear_lift_suppress_height = 0.05
-            diag_rear_lift_suppress_sigma = 0.05
+            unloaded_lift_suppress_height = 0.05
+            unloaded_lift_suppress_sigma = 0.05
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
@@ -455,7 +453,6 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
-            stairs_run_still = -3.0
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -465,7 +462,7 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.1
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 2.0
-            wheel_obstacle_rear_suppress = -0.08
+            wheel_obstacle_unloaded_lift = -0.08
             wheel_obstacle_spin = -1.0
             wheel_lateral_clearance = 0.45
 
@@ -596,4 +593,3 @@ class BlackWCfgPPO(BlackCfgPPO):
         load_run = -1
         checkpoint = -1
         resume_path = None
-

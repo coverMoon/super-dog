@@ -148,7 +148,6 @@ class BlackWEnv(BlackEnv):
         )
         self.wheel_obstacle_lift_target_z = torch.zeros_like(self.wheel_obstacle_lift_timer)
         self.wheel_obstacle_lift_start_z = torch.zeros_like(self.wheel_obstacle_lift_timer)
-        self.wheel_obstacle_lift_elapsed = torch.zeros_like(self.wheel_obstacle_lift_timer)
 
         cfg = self.cfg.rewards.wheel_obstacle_lift
         forward_offsets = torch.tensor(cfg.forward_offsets, dtype=torch.float, device=self.device, requires_grad=False)
@@ -247,23 +246,6 @@ class BlackWEnv(BlackEnv):
         if len(self.wheel_body_indices) != 4:
             raise RuntimeError(f"Expected 4 wheel bodies, got {len(self.wheel_body_indices)} from {self.body_names}")
 
-        wheel_prefix_to_lift_col = {name.split("_")[0]: i for i, name in enumerate(wheel_body_names)}
-        try:
-            self.front_wheel_lift_indices = torch.tensor(
-                [wheel_prefix_to_lift_col["FL"], wheel_prefix_to_lift_col["FR"]],
-                dtype=torch.long,
-                device=self.device,
-                requires_grad=False,
-            )
-            self.diag_rear_wheel_lift_indices = torch.tensor(
-                [wheel_prefix_to_lift_col["RR"], wheel_prefix_to_lift_col["RL"]],
-                dtype=torch.long,
-                device=self.device,
-                requires_grad=False,
-            )
-        except KeyError as exc:
-            raise RuntimeError(f"Missing expected wheel body prefix {exc} from {wheel_body_names}")
-
         print("### blackW dof names:", self.dof_names)
         print("### blackW wheel indices:", self.wheel_indices.detach().cpu().tolist())
         print("### blackW wheel body indices:", self.wheel_body_indices.detach().cpu().tolist())
@@ -310,7 +292,6 @@ class BlackWEnv(BlackEnv):
             self.wheel_obstacle_lift_timer[env_ids] = 0.0
             self.wheel_obstacle_lift_target_z[env_ids] = 0.0
             self.wheel_obstacle_lift_start_z[env_ids] = 0.0
-            self.wheel_obstacle_lift_elapsed[env_ids] = 0.0
         if len(env_ids) > 0 and hasattr(self, "last_impact_contacts"):
             self.last_impact_contacts[env_ids] = False
             self.prev_feet_vel[env_ids] = 0.0
@@ -1080,11 +1061,6 @@ class BlackWEnv(BlackEnv):
             active_time,
             torch.clamp(self.wheel_obstacle_lift_timer - self.dt, min=0.0),
         )
-        self.wheel_obstacle_lift_elapsed = torch.where(
-            new_trigger,
-            torch.zeros_like(self.wheel_obstacle_lift_elapsed),
-            torch.where(updated_timer > 0.0, self.wheel_obstacle_lift_elapsed + self.dt, torch.zeros_like(self.wheel_obstacle_lift_elapsed)),
-        )
         self.wheel_obstacle_lift_timer = updated_timer
 
         active = self.wheel_obstacle_lift_timer > 0.0
@@ -1127,7 +1103,7 @@ class BlackWEnv(BlackEnv):
         return torch.sum(lift_reward * active.float() * command_gate.float() * terrain_scale, dim=1)
 
 
-    def _reward_wheel_obstacle_rear_suppress(self):
+    def _reward_wheel_obstacle_unloaded_lift(self):
         cfg = self.cfg.rewards.wheel_obstacle_lift
         high_wall_envs = self._get_high_wall_env_mask()
         if not torch.any(high_wall_envs):
@@ -1143,9 +1119,9 @@ class BlackWEnv(BlackEnv):
         gate = lift_inactive & no_horizontal_load & high_wall_envs.unsqueeze(1)
 
         wheel_ground = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
-        allowed_z = wheel_ground + self.cfg.control.wheel_radius + cfg.diag_rear_lift_suppress_height
+        allowed_z = wheel_ground + self.cfg.control.wheel_radius + cfg.unloaded_lift_suppress_height
         excess = torch.clamp(wheel_pos[:, :, 2] - allowed_z, min=0.0)
-        sigma = max(cfg.diag_rear_lift_suppress_sigma, 1e-6)
+        sigma = max(cfg.unloaded_lift_suppress_sigma, 1e-6)
         return torch.sum(torch.square(excess / sigma) * gate.float(), dim=1)
 
     def _reward_wheel_obstacle_spin(self):
@@ -1249,20 +1225,3 @@ class BlackWEnv(BlackEnv):
         y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
         yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
         return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small & yaw_small).float()
-
-    def _reward_stairs_run_still(self):
-        dof_err = self.dof_pos - self.default_dof_pos
-        dof_err = dof_err.clone()
-        dof_err[:, self.wheel_indices] = 0.0
-
-        x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
-        y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
-        yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
-
-        terrain_type_ids = self._get_terrain_type_ids()
-        stairs_gate = torch.zeros_like(terrain_type_ids, dtype=torch.bool)
-        for terrain_type in self.cfg.rewards.stairs_run_still_terrain_types:
-            stairs_gate |= terrain_type_ids == int(terrain_type)
-
-        gate = x_run & y_small & yaw_small & stairs_gate
-        return torch.sum(torch.abs(dof_err), dim=1) * gate.float()
