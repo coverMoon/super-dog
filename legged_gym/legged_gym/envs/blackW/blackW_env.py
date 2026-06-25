@@ -214,24 +214,6 @@ class BlackWEnv(BlackEnv):
             device=self.device,
             requires_grad=False,
         )
-        self.front_sagittal_dof_indices = torch.tensor(
-            [
-                [self.dof_names.index(f"{prefix}_thigh_joint"), self.dof_names.index(f"{prefix}_calf_joint")]
-                for prefix in ("FL", "FR")
-            ],
-            dtype=torch.long,
-            device=self.device,
-            requires_grad=False,
-        )
-        self.rear_sagittal_dof_indices = torch.tensor(
-            [
-                [self.dof_names.index(f"{prefix}_thigh_joint"), self.dof_names.index(f"{prefix}_calf_joint")]
-                for prefix in ("RL", "RR")
-            ],
-            dtype=torch.long,
-            device=self.device,
-            requires_grad=False,
-        )
         self.wheel_forward_sign = torch.tensor(
             self._resolve_wheel_forward_sign(wheel_names),
             dtype=torch.float,
@@ -1055,6 +1037,11 @@ class BlackWEnv(BlackEnv):
         new_trigger = trigger & ~active
 
         new_start = wheel_z.detach()
+        terrain_type_ids = self._get_terrain_type_ids()
+        if getattr(cfg, "stairs_use_simple_lift", False):
+            stairs_simple_lift = torch.unsqueeze(terrain_type_ids == 3, dim=1)
+        else:
+            stairs_simple_lift = torch.zeros_like(trigger, dtype=torch.bool)
         low_obstacle_target = obstacle_height.detach() + cfg.clearance_margin
         high_obstacle_target = (
             obstacle_height.detach()
@@ -1066,6 +1053,7 @@ class BlackWEnv(BlackEnv):
             high_obstacle_target,
             low_obstacle_target,
         )
+        target_by_height = torch.where(stairs_simple_lift, low_obstacle_target, target_by_height)
         new_target = torch.maximum(
             target_by_height,
             new_start + cfg.min_lift_height,
@@ -1080,7 +1068,11 @@ class BlackWEnv(BlackEnv):
         )
         active_time = torch.clamp(
             torch.full_like(self.wheel_obstacle_lift_timer, cfg.active_time)
-            + high_obstacle_active_ratio * cfg.high_obstacle_extra_active_time,
+            + torch.where(
+                stairs_simple_lift,
+                torch.zeros_like(high_obstacle_active_ratio),
+                high_obstacle_active_ratio * cfg.high_obstacle_extra_active_time,
+            ),
             min=self.dt,
         )
         updated_timer = torch.where(
@@ -1105,7 +1097,11 @@ class BlackWEnv(BlackEnv):
             min=0.0,
             max=1.0,
         )
-        height_error = torch.abs(self.wheel_obstacle_lift_target_z - wheel_z)
+        height_error = torch.where(
+            stairs_simple_lift,
+            torch.clamp(self.wheel_obstacle_lift_target_z - wheel_z, min=0.0),
+            torch.abs(self.wheel_obstacle_lift_target_z - wheel_z),
+        )
         sigma = max(cfg.target_sigma, 1e-6)
         target_reward = torch.exp(-torch.square(height_error / sigma))
         over_lift = torch.clamp(
@@ -1114,6 +1110,7 @@ class BlackWEnv(BlackEnv):
         )
         over_lift_sigma = max(cfg.over_lift_sigma, 1e-6)
         over_lift_penalty = cfg.over_lift_penalty_weight * torch.square(over_lift / over_lift_sigma)
+        over_lift_penalty = torch.where(stairs_simple_lift, torch.zeros_like(over_lift_penalty), over_lift_penalty)
         lift_reward = (
             cfg.progress_weight * lift_progress
             + (1.0 - cfg.progress_weight) * target_reward
@@ -1183,7 +1180,24 @@ class BlackWEnv(BlackEnv):
         slip_speed = torch.clamp(wheel_surface_speed - forward_speed, min=0.0)
         slip_penalty = torch.square(slip_speed / max(cfg.slip_speed_sigma, 1e-6))
         penalty_scale = contact_scale * obstacle_scale * command_scale * progress_scale * terrain_gate.unsqueeze(1).float()
-        return torch.sum(slip_penalty * penalty_scale, dim=1)
+        continuous_penalty = slip_penalty * penalty_scale
+
+        if getattr(cfg, "stairs_use_threshold_spin", False):
+            contact_gate = horizontal_force > cfg.horizontal_force_threshold
+            obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+            command_gate = self.commands[:, 0:1] > cfg.command_threshold
+            progress_gate = self.base_lin_vel[:, 0:1] < cfg.progress_threshold
+            wheel_spin = torch.clamp(torch.abs(self.dof_vel[:, self.wheel_indices]) - cfg.spin_threshold, min=0.0)
+            threshold_penalty = torch.square(wheel_spin)
+            threshold_gate = contact_gate & obstacle_gate & command_gate & progress_gate & terrain_gate.unsqueeze(1)
+            stairs_gate = (terrain_type_ids == 3).unsqueeze(1)
+            continuous_penalty = torch.where(
+                stairs_gate,
+                threshold_penalty * threshold_gate.float(),
+                continuous_penalty,
+            )
+
+        return torch.sum(continuous_penalty, dim=1)
 
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
@@ -1236,40 +1250,19 @@ class BlackWEnv(BlackEnv):
         yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
         return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small & yaw_small).float()
 
-    def _reward_difficult_posture_hold(self):
-        cfg = self.cfg.rewards.difficult_posture_hold
+    def _reward_stairs_run_still(self):
+        dof_err = self.dof_pos - self.default_dof_pos
+        dof_err = dof_err.clone()
+        dof_err[:, self.wheel_indices] = 0.0
+
+        x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
+        y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
+        yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
 
         terrain_type_ids = self._get_terrain_type_ids()
-        terrain_gate = torch.zeros_like(terrain_type_ids, dtype=torch.bool)
-        for terrain_type in cfg.terrain_types:
-            terrain_gate |= terrain_type_ids == int(terrain_type)
+        stairs_gate = torch.zeros_like(terrain_type_ids, dtype=torch.bool)
+        for terrain_type in self.cfg.rewards.stairs_run_still_terrain_types:
+            stairs_gate |= terrain_type_ids == int(terrain_type)
 
-        command_gate = (
-            (self.commands[:, 0] > cfg.command_x_threshold)
-            & (torch.abs(self.commands[:, 1]) < cfg.command_y_threshold)
-            & (torch.abs(self.commands[:, 2]) < cfg.command_yaw_threshold)
-        )
-
-        forward_pitch = self.projected_gravity[:, 0] * cfg.forward_pitch_sign
-        pitch_span = max(cfg.pitch_full - cfg.pitch_start, 1e-6)
-        pitch_scale = torch.clamp((forward_pitch - cfg.pitch_start) / pitch_span, min=0.0, max=1.0)
-
-        joint_excess = torch.clamp(
-            torch.abs(self.dof_pos - self.default_dof_pos) - cfg.joint_margin,
-            min=0.0,
-        )
-        rear_excess = torch.sum(joint_excess[:, self.rear_sagittal_dof_indices], dim=(1, 2))
-
-        front_excess = joint_excess[:, self.front_sagittal_dof_indices]
-        front_lift_active = self.wheel_obstacle_lift_timer[:, self.front_wheel_lift_indices] > 0.0
-        front_scale = torch.where(
-            front_lift_active,
-            torch.full_like(front_excess[:, :, 0], cfg.front_lift_scale),
-            torch.ones_like(front_excess[:, :, 0]),
-        )
-        front_excess = torch.sum(front_excess * front_scale.unsqueeze(2), dim=(1, 2))
-
-        posture_excess = rear_excess + front_excess
-        gate = terrain_gate & command_gate
-        return posture_excess * pitch_scale * gate.float()
-
+        gate = x_run & y_small & yaw_small & stairs_gate
+        return torch.sum(torch.abs(dof_err), dim=1) * gate.float()

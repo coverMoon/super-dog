@@ -301,6 +301,7 @@ class BlackWCfg(BlackCfg):
         run_still_x_threshold = 0.1 # 大于时触发
         run_still_y_threshold = 0.1 # 小于时触发
         run_still_yaw_threshold = 0.15 # 小于时触发
+        stairs_run_still_terrain_types = [3]
 
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
@@ -385,6 +386,8 @@ class BlackWCfg(BlackCfg):
             max_approach_speed = 0.4
 
         class wheel_obstacle_lift:
+            # Keep high-wall behavior configurable while allowing stairs to use the simpler Jun06-style lift target.
+            stairs_use_simple_lift = False
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
@@ -398,7 +401,7 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.025
+            over_lift_margin = 0.03
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.1
             diag_rear_lift_suppress_time = 0.3
@@ -408,24 +411,16 @@ class BlackWCfg(BlackCfg):
             lateral_offsets = [-0.03, 0.0, 0.03]
 
         class wheel_obstacle_spin:
+            # When enabled, stairs type 3 use the older Jun06 hard-threshold anti-spin logic; other terrains keep continuous slip.
+            stairs_use_threshold_spin = False
             terrain_types = [3, 4, 9]
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.02
             slip_speed_sigma = 0.25
             progress_speed_sigma = 0.4
-
-        class difficult_posture_hold:
-            terrain_types = [3]
-            command_x_threshold = 0.2
-            command_y_threshold = 0.1
-            command_yaw_threshold = 0.15
-            joint_margin = 0.1
-            front_lift_scale = 0.3
-            # Current x-forward/y-left convention: positive projected-gravity x is nose-down.
-            forward_pitch_sign = 1.0
-            pitch_start = 0.08
-            pitch_full = 0.20
+            spin_threshold = 8.0
+            progress_threshold = 0.25
 
         class wheel_lateral_clearance:
             command_threshold = 0.18
@@ -460,6 +455,7 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
+            stairs_run_still = -3.0
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -468,15 +464,14 @@ class BlackWCfg(BlackCfg):
             collision = -1.0
             feet_stumble = -0.1
             foot_impact_vel = -0.02
-            wheel_obstacle_lift = 1.75
-            difficult_posture_hold = -0.3
+            wheel_obstacle_lift = 2.0
             wheel_obstacle_rear_suppress = -0.08
-            wheel_obstacle_spin = -1.5
+            wheel_obstacle_spin = -1.0
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
-            action_rate = -0.09
+            action_rate = -0.06
             smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
@@ -541,7 +536,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.0035
+        entropy_coef = 0.0032
         num_learning_epochs = 5
         num_mini_batches = 4
         learning_rate = 1.0e-3
