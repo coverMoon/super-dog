@@ -1143,9 +1143,9 @@ class BlackWEnv(BlackEnv):
         progress_deficit = torch.clamp(command_x - forward_speed, min=0.0)
         progress_scale = torch.clamp(progress_deficit / max(cfg.progress_speed_sigma, 1e-6), min=0.0, max=1.0)
 
+        terrain_type_ids = self._get_terrain_type_ids()
         terrain_types = getattr(cfg, "terrain_types", [])
         if len(terrain_types) > 0:
-            terrain_type_ids = self._get_terrain_type_ids()
             terrain_gate = torch.zeros_like(terrain_type_ids, dtype=torch.bool)
             for terrain_type in terrain_types:
                 terrain_gate = terrain_gate | (terrain_type_ids == terrain_type)
@@ -1157,6 +1157,12 @@ class BlackWEnv(BlackEnv):
         slip_penalty = torch.square(slip_speed / max(cfg.slip_speed_sigma, 1e-6))
         penalty_scale = contact_scale * obstacle_scale * command_scale * progress_scale * terrain_gate.unsqueeze(1).float()
         continuous_penalty = slip_penalty * penalty_scale
+        stairs_gate = (terrain_type_ids == 3).unsqueeze(1)
+        continuous_penalty = torch.where(
+            stairs_gate,
+            continuous_penalty * getattr(cfg, "stairs_continuous_scale", 1.0),
+            continuous_penalty,
+        )
 
         if getattr(cfg, "stairs_use_threshold_spin", False):
             contact_gate = horizontal_force > cfg.horizontal_force_threshold
@@ -1166,7 +1172,6 @@ class BlackWEnv(BlackEnv):
             wheel_spin = torch.clamp(torch.abs(self.dof_vel[:, self.wheel_indices]) - cfg.spin_threshold, min=0.0)
             threshold_penalty = torch.square(wheel_spin)
             threshold_gate = contact_gate & obstacle_gate & command_gate & progress_gate & terrain_gate.unsqueeze(1)
-            stairs_gate = (terrain_type_ids == 3).unsqueeze(1)
             continuous_penalty = torch.where(
                 stairs_gate,
                 threshold_penalty * threshold_gate.float(),

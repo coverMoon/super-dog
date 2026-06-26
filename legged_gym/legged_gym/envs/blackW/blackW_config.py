@@ -386,7 +386,7 @@ class BlackWCfg(BlackCfg):
 
         class wheel_obstacle_lift:
             # Keep high-wall behavior configurable while allowing stairs to use the simpler Jun06-style lift target.
-            stairs_use_simple_lift = False
+            stairs_use_simple_lift = True
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
@@ -417,6 +417,7 @@ class BlackWCfg(BlackCfg):
             obstacle_height_threshold = 0.02
             slip_speed_sigma = 0.25
             progress_speed_sigma = 0.4
+            stairs_continuous_scale = 1.5
             spin_threshold = 8.0
             progress_threshold = 0.25
 
