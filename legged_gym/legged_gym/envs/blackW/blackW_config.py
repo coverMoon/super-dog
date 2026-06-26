@@ -299,8 +299,9 @@ class BlackWCfg(BlackCfg):
         stand_still_cmd_threshold = 0.1
         stand_still_yaw_threshold = 0.1
         run_still_x_threshold = 0.1 # 大于时触发
-        run_still_y_threshold = 0.1 # 小于时触发
-        run_still_yaw_threshold = 0.15 # 小于时触发
+        # Legacy names kept for config compatibility; run_still now decays with y/yaw command magnitude.
+        run_still_y_threshold = 0.1
+        run_still_yaw_threshold = 0.15
 
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
@@ -308,17 +309,25 @@ class BlackWCfg(BlackCfg):
         foot_impact_contact_force = 1.0
         foot_impact_vel_threshold = 0.2
 
-        hip_default_cmd_min_scale = 0.5
-        hip_default_y_ref = 0.5
-        hip_default_yaw_ref = 1.0
-        hip_default_y_scale = 0.35
-        hip_default_yaw_scale = 0.35
-
         orientation_terrain_adaptive = True
         orientation_terrain_variability_clip = 0.30
         orientation_terrain_sigma = 0.0015
         orientation_terrain_min_scale = 0.05
         orientation_terrain_max_scale = 1.0
+
+        class hip_default:
+            cmd_min_scale = 0.5
+            y_ref = 0.4
+            yaw_ref = 1.0
+            y_scale = 0.4
+            yaw_scale = 0.35
+
+        class run_still:
+            cmd_min_scale = 0.5
+            y_ref = 0.4
+            yaw_ref = 1.0
+            y_scale = 0.4
+            yaw_scale = 0.35
 
         class terrain_adaptive:
             enabled = False
@@ -451,7 +460,7 @@ class BlackWCfg(BlackCfg):
 
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
-            hip_default = -0.35
+            hip_default = -0.55
             stand_still = -0.6
             run_still = -1.0
             stand_wheel_action = -0.2
@@ -590,7 +599,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         max_iterations = 1000  
         experiment_name = "rough_blackW_dog"
         run_name = ""
-        resume = None
-        load_run = -1
+        resume = True
+        load_run = "Jun26_09-52-36_"
         checkpoint = -1
         resume_path = None

@@ -892,19 +892,25 @@ class BlackWEnv(BlackEnv):
         yaw_stand = torch.abs(self.commands[:, 2]) < self.cfg.rewards.stand_still_yaw_threshold
         return lin_stand & yaw_stand
 
+    def _get_posture_command_scale(self, cfg_name):
+        cfg = getattr(self.cfg.rewards, cfg_name, None)
+        y_ref = max(getattr(cfg, "y_ref", getattr(self.cfg.rewards, "hip_default_y_ref", 0.5)), 1e-6)
+        yaw_ref = max(getattr(cfg, "yaw_ref", getattr(self.cfg.rewards, "hip_default_yaw_ref", 1.0)), 1e-6)
+        y_scale = getattr(cfg, "y_scale", getattr(self.cfg.rewards, "hip_default_y_scale", 0.35))
+        yaw_scale = getattr(cfg, "yaw_scale", getattr(self.cfg.rewards, "hip_default_yaw_scale", 0.35))
+        min_scale = getattr(cfg, "cmd_min_scale", getattr(self.cfg.rewards, "hip_default_cmd_min_scale", 0.5))
+        y_cmd = torch.clamp(torch.abs(self.commands[:, 1]) / y_ref, max=1.0)
+        yaw_cmd = torch.clamp(torch.abs(self.commands[:, 2]) / yaw_ref, max=1.0)
+        scale = 1.0 - y_scale * y_cmd
+        scale = scale - yaw_scale * yaw_cmd
+        return torch.clamp(scale, min=min_scale, max=1.0)
+
     def _reward_hip_default(self):
         hip_error = torch.sum(
             torch.abs(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]),
             dim=1,
         )
-        y_ref = max(self.cfg.rewards.hip_default_y_ref, 1e-6)
-        yaw_ref = max(self.cfg.rewards.hip_default_yaw_ref, 1e-6)
-        y_cmd = torch.clamp(torch.abs(self.commands[:, 1]) / y_ref, max=1.0)
-        yaw_cmd = torch.clamp(torch.abs(self.commands[:, 2]) / yaw_ref, max=1.0)
-        scale = 1.0 - self.cfg.rewards.hip_default_y_scale * y_cmd
-        scale = scale - self.cfg.rewards.hip_default_yaw_scale * yaw_cmd
-        scale = torch.clamp(scale, min=self.cfg.rewards.hip_default_cmd_min_scale, max=1.0)
-        return hip_error * scale
+        return hip_error * self._get_posture_command_scale("hip_default")
 
     def _reward_stand_still(self):
         dof_err = self.dof_pos - self.default_dof_pos
@@ -1227,6 +1233,4 @@ class BlackWEnv(BlackEnv):
         dof_err = dof_err.clone()
         dof_err[:, self.wheel_indices] = 0.0
         x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
-        y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
-        yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
-        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small & yaw_small).float()
+        return torch.sum(torch.abs(dof_err), dim=1) * x_run.float() * self._get_posture_command_scale("run_still")
