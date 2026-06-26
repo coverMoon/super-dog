@@ -1,5 +1,6 @@
 .vscode/
 .idea/
+.ipynb_checkpoints/
 
 # Local Isaac Gym checkout / install
 isaacgym/
