@@ -400,7 +400,7 @@ class BlackWCfg(BlackCfg):
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
-            clearance_margin = 0.05
+            clearance_margin = 0.06
             high_obstacle_height_threshold = 0.18
             high_obstacle_clearance_margin = 0.03
             high_obstacle_active_height_span = 0.18
@@ -410,7 +410,7 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.03
+            over_lift_margin = 0.04
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.1
             unloaded_lift_suppress_height = 0.05
@@ -473,13 +473,13 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.1
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 2.0
-            wheel_obstacle_unloaded_lift = -0.08
+            wheel_obstacle_unloaded_lift = -0.06
             wheel_obstacle_spin = -1.0
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
-            action_rate = -0.06
+            action_rate = -0.065
             smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
@@ -603,4 +603,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jun26_09-52-36_"
+        load_run = "Jun26_12-23-31_"

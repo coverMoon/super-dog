@@ -37,3 +37,17 @@ sim2real 观察：`Jun27_01-11-44_` 的实际越障能力仍不如 `Jun26_12-23-
 为兼顾 6/26 obstacle 基线复现和平地稳定性实验，将 `_reward_run_still` 改为由 `rewards.run_still.use_command_decay` 控制：`False` 时使用旧的 y/yaw 阈值门控，即只有 `abs(cmd_x)` 超过阈值且 `abs(cmd_y)`、`abs(cmd_yaw)` 低于阈值时才启用；`True` 时使用后续新增的 y/yaw 连续衰减制，在 x+yaw 混合指令下仍保留部分回中约束。
 
 当前默认设为 `use_command_decay = False`，使本地配置更接近 `Jun26_12-23-31_` obstacle 基线。后续如果要单独测试平地 x+yaw 稳定增强，只需要把该开关改为 `True`，不再改 reward 代码。
+
+## 6. Jun27_17-07-17_ 与 Jun27_17-09-43_ 结果复查
+
+两组都从 `Jun26_12-23-31_` 继续 1000 iter 到 34000，并保持 6/26 obstacle 基线的稳定性设置：`hip_default = -0.35`、`roll_orientation = 0.0`、`run_still.use_command_decay = False`、`wheel_obstacle_lift/spin.horizontal_force_threshold = 15`。`Jun27_17-07-17_` 的改动是 `wheel_obstacle_unloaded_lift = -0.06` 且 `wheel_obstacle_spin.stairs_continuous_scale = 1.6`；`Jun27_17-09-43_` 的改动是 `wheel_obstacle_unloaded_lift = -0.06`、`wheel_obstacle_lift.clearance_margin = 0.06`、`over_lift_margin = 0.04`。
+
+末 500 iter 均值看，两组都没有明显退化：`Jun27_17-07-17_` 的 `mean_reward` 约 72.43、`terrain_level` 约 5.63、`rew_wheel_obstacle_lift` 约 1.00；`Jun27_17-09-43_` 分别约 72.18、5.60、0.99。两组 `rew_run_still` 约 -0.07，说明当前确实回到了旧阈值制的轻量级，不再出现 `Jun27_01-11-44_` 那类 run_still 大幅变重。相对 `Jun26_12-23-31_`，`17-07-17` 的 yaw tracking、action_rate、smoothness 略好，terrain_level 略高；`17-09-43` 的 wheel spin 惩罚略轻、orientation 略好，但 `dof_pos_limits` 和 value loss 稳定性稍差。
+
+value loss 方面两组都有孤立尖峰：`17-07-17` 在 step 33376 约 57.3，但末 500 最大约 0.57；`17-09-43` 在 step 33835 约 5.31，末 100 已恢复到约 0.31 均值。当前判断两组都不像持续崩坏。优先 sim2sim 对比：`17-07-17` 看楼梯空转是否比 `-0.06` 单纯放松更好，以及高墙是否保持；`17-09-43` 看高墙是否因更高 clearance/over-lift 更丝滑，重点注意是否出现抬轮过高、动作发飘或落地恢复变差。
+
+sim2sim 观察：`Jun27_17-07-17_` 上楼梯有时仍会卡住，尤其在上到一半、前轮和后轮都抵着台阶时，可能出现轮子直接不转或持续空转。说明仅将 `wheel_obstacle_unloaded_lift` 放松到 -0.06 并把 `stairs_continuous_scale` 从 1.5 加到 1.6，还不足以解决楼梯中段“前后轮同时受阻”的接触节奏问题；继续加大 stairs spin 惩罚也未必可靠，因为当前现象同时包含“不转”和“空转”，不是单纯空转过多。
+
+`Jun27_17-09-43_` 相对更容易抬腿，高墙前腿抬得更高，说明提高 `clearance_margin` 和 `over_lift_margin` 对抬腿高度确实有效。但问题没有完全消失：楼梯仍未完全杜绝卡住，高墙时后腿有时还会卡住。当前判断是前腿高度问题已有改善，剩余瓶颈更偏向后腿/最后一轮越过障碍时的推进、落地恢复和持续接触脱困，而不是单纯继续提高前腿抬轮目标。
+
+后续分析方向：楼梯中段需要区分轮子“不转”与“空转”的成因，前者可能是姿态/关节动作空间或接触几何导致策略主动停轮，后者才是 anti-spin/progress 约束不足；高墙后腿卡住则更可能需要针对后腿越过障碍的持续进度或接触后 active window，而不是继续全局增加 lift height。下一步暂不改配置，先保留这两组作为 sim2sim 对照样本。
