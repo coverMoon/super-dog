@@ -1233,4 +1233,9 @@ class BlackWEnv(BlackEnv):
         dof_err = dof_err.clone()
         dof_err[:, self.wheel_indices] = 0.0
         x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
-        return torch.sum(torch.abs(dof_err), dim=1) * x_run.float() * self._get_posture_command_scale("run_still")
+        if getattr(self.cfg.rewards.run_still, "use_command_decay", False):
+            command_scale = self._get_posture_command_scale("run_still")
+            return torch.sum(torch.abs(dof_err), dim=1) * x_run.float() * command_scale
+        y_still = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
+        yaw_still = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
+        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_still & yaw_still).float()

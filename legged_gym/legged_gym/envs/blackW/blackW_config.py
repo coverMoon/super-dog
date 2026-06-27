@@ -317,16 +317,17 @@ class BlackWCfg(BlackCfg):
 
         class hip_default:
             cmd_min_scale = 0.5
-            y_ref = 0.4
+            y_ref = 0.5
             yaw_ref = 1.0
-            y_scale = 0.4
+            y_scale = 0.35
             yaw_scale = 0.35
 
         class run_still:
+            use_command_decay = False
             cmd_min_scale = 0.5
-            y_ref = 0.4
+            y_ref = 0.5
             yaw_ref = 1.0
-            y_scale = 0.4
+            y_scale = 0.35
             yaw_scale = 0.35
 
         class terrain_adaptive:
@@ -396,10 +397,10 @@ class BlackWCfg(BlackCfg):
         class wheel_obstacle_lift:
             # Keep high-wall behavior configurable while allowing stairs to use the simpler Jun06-style lift target.
             stairs_use_simple_lift = True
-            horizontal_force_threshold = 10.0
+            horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
-            clearance_margin = 0.06
+            clearance_margin = 0.05
             high_obstacle_height_threshold = 0.18
             high_obstacle_clearance_margin = 0.03
             high_obstacle_active_height_span = 0.18
@@ -421,7 +422,7 @@ class BlackWCfg(BlackCfg):
             # When enabled, stairs type 3 use the older Jun06 hard-threshold anti-spin logic; other terrains keep continuous slip.
             stairs_use_threshold_spin = False
             terrain_types = [3, 4, 9]
-            horizontal_force_threshold = 10.0
+            horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.02
             slip_speed_sigma = 0.25
@@ -454,13 +455,13 @@ class BlackWCfg(BlackCfg):
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -3.0
-            roll_orientation = -1.0
+            roll_orientation = 0.0
             base_height = -5.0
             dof_pos_limits = -0.2
 
             # Joint posture and stand behavior.
             # 关节姿态回中与静止行为约束。
-            hip_default = -0.4
+            hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
             stand_wheel_action = -0.2
@@ -472,7 +473,7 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.1
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 2.0
-            wheel_obstacle_unloaded_lift = -0.06
+            wheel_obstacle_unloaded_lift = -0.08
             wheel_obstacle_spin = -1.0
             wheel_lateral_clearance = 0.45
 
@@ -601,3 +602,5 @@ class BlackWCfgPPO(BlackCfgPPO):
         run_name = ""
         checkpoint = -1
         resume_path = None
+        resume = True
+        load_run = "Jun26_09-52-36_"
