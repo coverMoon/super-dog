@@ -246,6 +246,8 @@ class BlackWEnv(BlackEnv):
         if len(self.wheel_body_indices) != 4:
             raise RuntimeError(f"Expected 4 wheel bodies, got {len(self.wheel_body_indices)} from {self.body_names}")
 
+        self.wheel_body_leg_indices = self._resolve_leg_order_indices(wheel_body_names, "wheel body")
+
         print("### blackW dof names:", self.dof_names)
         print("### blackW wheel indices:", self.wheel_indices.detach().cpu().tolist())
         print("### blackW wheel body indices:", self.wheel_body_indices.detach().cpu().tolist())
@@ -307,6 +309,23 @@ class BlackWEnv(BlackEnv):
                 damping_scale = np.random.uniform(damping_range[0], damping_range[1], size=len(hip_dof_ids))
                 props["damping"][hip_dof_ids] *= damping_scale
         return props
+
+    def _resolve_leg_order_indices(self, names, label):
+        leg_to_idx = {}
+        for idx, name in enumerate(names):
+            for leg in ("FL", "FR", "RL", "RR"):
+                if name == leg or name.startswith(f"{leg}_") or f"_{leg}_" in name:
+                    leg_to_idx[leg] = idx
+                    break
+        missing = [leg for leg in ("FL", "FR", "RL", "RR") if leg not in leg_to_idx]
+        if missing:
+            raise RuntimeError(f"Could not resolve {label} leg order for {missing} from {names}")
+        return torch.tensor(
+            [leg_to_idx["FL"], leg_to_idx["FR"], leg_to_idx["RL"], leg_to_idx["RR"]],
+            dtype=torch.long,
+            device=self.device,
+            requires_grad=False,
+        )
 
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign
@@ -1106,8 +1125,74 @@ class BlackWEnv(BlackEnv):
             torch.full_like(self.wheel_obstacle_lift_timer[:, 0], down_stairs_lift_scale),
             torch.ones_like(self.wheel_obstacle_lift_timer[:, 0]),
         ).unsqueeze(1)
-        return torch.sum(lift_reward * active.float() * command_gate.float() * terrain_scale, dim=1)
+        reward_per_wheel = lift_reward * active.float() * command_gate.float() * terrain_scale
+        reward_active = active & command_gate & (terrain_scale > 0.0)
+        return self._aggregate_wheel_obstacle_lift_reward(reward_per_wheel, reward_active, terrain_type_ids)
 
+    def _aggregate_wheel_obstacle_lift_reward(self, reward_per_wheel, reward_active, terrain_type_ids):
+        cfg = self.cfg.rewards.wheel_obstacle_lift
+        if not getattr(cfg, "multi_wheel_coordination", False):
+            return torch.sum(reward_per_wheel, dim=1)
+        if not hasattr(self, "wheel_body_leg_indices"):
+            return torch.sum(reward_per_wheel, dim=1)
+
+        terrain_types = getattr(cfg, "multi_wheel_coordination_terrain_types", [])
+        if len(terrain_types) == 0:
+            coordination_gate = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+        else:
+            coordination_gate = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+            for terrain_type in terrain_types:
+                coordination_gate = coordination_gate | (terrain_type_ids == int(terrain_type))
+
+        ordered_reward = reward_per_wheel[:, self.wheel_body_leg_indices]
+        ordered_active = reward_active[:, self.wheel_body_leg_indices]
+        fl, fr, rl, rr = 0, 1, 2, 3
+
+        pair_residual = float(getattr(cfg, "multi_wheel_pair_residual", 0.0))
+        diagonal_residual = float(getattr(cfg, "multi_wheel_diagonal_residual", pair_residual))
+        high_wall_pair_residual = float(getattr(cfg, "multi_wheel_high_wall_pair_residual", pair_residual))
+        high_wall_diagonal_residual = float(getattr(cfg, "multi_wheel_high_wall_diagonal_residual", diagonal_residual))
+        pair_residual = max(0.0, min(pair_residual, 1.0))
+        diagonal_residual = max(0.0, min(diagonal_residual, 1.0))
+        high_wall_pair_residual = max(0.0, min(high_wall_pair_residual, 1.0))
+        high_wall_diagonal_residual = max(0.0, min(high_wall_diagonal_residual, 1.0))
+
+        high_wall_envs = terrain_type_ids == 9
+        pair_residual_tensor = torch.where(
+            high_wall_envs,
+            torch.full_like(ordered_reward[:, 0], high_wall_pair_residual),
+            torch.full_like(ordered_reward[:, 0], pair_residual),
+        )
+        diagonal_residual_tensor = torch.where(
+            high_wall_envs,
+            torch.full_like(ordered_reward[:, 0], high_wall_diagonal_residual),
+            torch.full_like(ordered_reward[:, 0], diagonal_residual),
+        )
+
+        def reduce_pair(idx_a, idx_b):
+            reward_a = ordered_reward[:, idx_a]
+            reward_b = ordered_reward[:, idx_b]
+            pair_sum = reward_a + reward_b
+            pair_max = torch.maximum(reward_a, reward_b)
+            pair_min = torch.minimum(reward_a, reward_b)
+            pair_reduced = pair_max + pair_residual_tensor * pair_min
+            both_active = ordered_active[:, idx_a] & ordered_active[:, idx_b]
+            return torch.where(both_active, pair_reduced, pair_sum)
+
+        front_reward = reduce_pair(fl, fr)
+        rear_reward = reduce_pair(rl, rr)
+        pair_reward = front_reward + rear_reward
+
+        diagonal_a = ordered_reward[:, fl] + ordered_reward[:, rr]
+        diagonal_b = ordered_reward[:, fr] + ordered_reward[:, rl]
+        diagonal_max = torch.maximum(diagonal_a, diagonal_b)
+        diagonal_min = torch.minimum(diagonal_a, diagonal_b)
+        diagonal_reward = diagonal_max + diagonal_residual_tensor * diagonal_min
+        all_active = ordered_active[:, fl] & ordered_active[:, fr] & ordered_active[:, rl] & ordered_active[:, rr]
+        coordinated_reward = torch.where(all_active, diagonal_reward, pair_reward)
+
+        base_reward = torch.sum(reward_per_wheel, dim=1)
+        return torch.where(coordination_gate, coordinated_reward, base_reward)
 
     def _reward_wheel_obstacle_unloaded_lift(self):
         cfg = self.cfg.rewards.wheel_obstacle_lift

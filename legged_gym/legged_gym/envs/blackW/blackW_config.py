@@ -400,7 +400,7 @@ class BlackWCfg(BlackCfg):
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
-            clearance_margin = 0.06
+            clearance_margin = 0.05
             high_obstacle_height_threshold = 0.18
             high_obstacle_clearance_margin = 0.03
             high_obstacle_active_height_span = 0.18
@@ -410,11 +410,17 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.04
+            over_lift_margin = 0.03
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.1
             unloaded_lift_suppress_height = 0.05
             unloaded_lift_suppress_sigma = 0.05
+            multi_wheel_coordination = True
+            multi_wheel_coordination_terrain_types = [3, 9]
+            multi_wheel_pair_residual = 0.2
+            multi_wheel_diagonal_residual = 0.2
+            multi_wheel_high_wall_pair_residual = 0.4
+            multi_wheel_high_wall_diagonal_residual = 0.4
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
@@ -473,7 +479,7 @@ class BlackWCfg(BlackCfg):
             feet_stumble = -0.1
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 2.0
-            wheel_obstacle_unloaded_lift = -0.06
+            wheel_obstacle_unloaded_lift = -0.05
             wheel_obstacle_spin = -1.0
             wheel_lateral_clearance = 0.45
 
@@ -603,4 +609,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jun28_00-27-00_"
+        load_run = "Jun26_12-30-56_"
