@@ -396,7 +396,7 @@ class BlackWCfg(BlackCfg):
 
         class wheel_obstacle_lift:
             # Keep high-wall behavior configurable while allowing stairs to use the simpler Jun06-style lift target.
-            stairs_use_simple_lift = True
+            stairs_use_simple_lift = False
             horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
@@ -410,13 +410,13 @@ class BlackWCfg(BlackCfg):
             active_time = 0.8
             progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.03
+            over_lift_margin = 0.02
             over_lift_sigma = 0.04
-            over_lift_penalty_weight = 0.1
+            over_lift_penalty_weight = 0.2
             unloaded_lift_suppress_height = 0.05
             unloaded_lift_suppress_sigma = 0.05
             multi_wheel_coordination = True
-            multi_wheel_coordination_terrain_types = [3, 9]
+            multi_wheel_coordination_terrain_types = [3]
             multi_wheel_pair_residual = 0.2
             multi_wheel_diagonal_residual = 0.2
             multi_wheel_high_wall_pair_residual = 0.4
@@ -485,7 +485,7 @@ class BlackWCfg(BlackCfg):
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
-            action_rate = -0.065
+            action_rate = -0.067
             smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
