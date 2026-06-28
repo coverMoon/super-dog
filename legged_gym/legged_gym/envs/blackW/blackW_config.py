@@ -603,4 +603,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jun26_12-23-31_"
+        load_run = "Jun28_00-27-00_"
