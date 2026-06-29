@@ -444,6 +444,14 @@ class BlackWCfg(BlackCfg):
             min_contact_count = 2
             min_command_speed = 0.2
 
+        class stairs_pair_escape:
+            command_threshold = 0.2
+            horizontal_force_threshold = 15.0
+            obstacle_height_threshold = 0.02
+            min_progress_span = 0.03
+            front_pair_weight = 0.6
+            rear_pair_weight = 1.0
+
         class wheel_lateral_clearance:
             command_threshold = 0.18
             full_command_threshold = 0.45
@@ -489,6 +497,7 @@ class BlackWCfg(BlackCfg):
             wheel_obstacle_unloaded_lift = -0.05
             wheel_obstacle_spin = -1.0
             stairs_multi_contact_progress = 1.0
+            stairs_pair_escape = 0.5
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.

@@ -1299,6 +1299,51 @@ class BlackWEnv(BlackEnv):
 
         return progress_reward * stairs_gate.float() * command_gate.float() * multi_contact_gate.float()
 
+    def _reward_stairs_pair_escape(self):
+        cfg = self.cfg.rewards.stairs_pair_escape
+        if not hasattr(self, "wheel_body_leg_indices"):
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+
+        terrain_type_ids = self._get_terrain_type_ids()
+        stairs_gate = terrain_type_ids == 3
+
+        command_x = torch.clamp(self.commands[:, 0], min=0.0)
+        command_gate = command_x > cfg.command_threshold
+
+        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
+        wheel_pos = wheel_states[:, :, :3]
+        wheel_z = wheel_states[:, :, 2]
+        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
+        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
+        contact_gate = horizontal_force > cfg.horizontal_force_threshold
+
+        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
+        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
+        obstacle_rel_height = obstacle_height - ground_height
+        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+
+        ordered_contacts = (contact_gate & obstacle_gate)[:, self.wheel_body_leg_indices]
+        ordered_active = (self.wheel_obstacle_lift_timer > 0.0)[:, self.wheel_body_leg_indices]
+        ordered_wheel_z = wheel_z[:, self.wheel_body_leg_indices]
+        ordered_start_z = self.wheel_obstacle_lift_start_z[:, self.wheel_body_leg_indices]
+        ordered_target_z = self.wheel_obstacle_lift_target_z[:, self.wheel_body_leg_indices]
+
+        lift_span = torch.clamp(ordered_target_z - ordered_start_z, min=cfg.min_progress_span)
+        lift_progress = torch.clamp((ordered_wheel_z - ordered_start_z) / lift_span, min=0.0, max=1.0)
+
+        fl, fr, rl, rr = 0, 1, 2, 3
+        pair_ready = ordered_contacts & ordered_active
+        front_pair_gate = pair_ready[:, fl] & pair_ready[:, fr]
+        rear_pair_gate = pair_ready[:, rl] & pair_ready[:, rr]
+        front_escape = torch.maximum(lift_progress[:, fl], lift_progress[:, fr])
+        rear_escape = torch.maximum(lift_progress[:, rl], lift_progress[:, rr])
+
+        reward = (
+            float(cfg.front_pair_weight) * front_escape * front_pair_gate.float()
+            + float(cfg.rear_pair_weight) * rear_escape * rear_pair_gate.float()
+        )
+        return reward * stairs_gate.float() * command_gate.float()
+
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
         flat_offsets = local_offsets.reshape(self.num_envs, -1, 3)
