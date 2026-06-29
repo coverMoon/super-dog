@@ -413,6 +413,8 @@ class BlackWCfg(BlackCfg):
             over_lift_margin = 0.035
             over_lift_sigma = 0.04
             over_lift_penalty_weight = 0.15
+            rear_lift_target_offset = 0.03
+            rear_lift_target_offset_terrain_types = [3]
             unloaded_lift_suppress_height = 0.05
             unloaded_lift_suppress_sigma = 0.05
             multi_wheel_coordination = True

@@ -1060,6 +1060,17 @@ class BlackWEnv(BlackEnv):
             low_obstacle_target,
         )
         target_by_height = torch.where(stairs_simple_lift, low_obstacle_target, target_by_height)
+        rear_lift_target_offset = float(getattr(cfg, "rear_lift_target_offset", 0.0))
+        if rear_lift_target_offset > 0.0 and hasattr(self, "wheel_body_leg_indices"):
+            rear_offset_gate = torch.zeros_like(target_by_height, dtype=torch.bool)
+            rear_offset_gate[:, self.wheel_body_leg_indices[2:4]] = True
+            rear_offset_terrain_types = getattr(cfg, "rear_lift_target_offset_terrain_types", [])
+            if len(rear_offset_terrain_types) > 0:
+                rear_offset_terrain_gate = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+                for terrain_type in rear_offset_terrain_types:
+                    rear_offset_terrain_gate = rear_offset_terrain_gate | (terrain_type_ids == int(terrain_type))
+                rear_offset_gate = rear_offset_gate & rear_offset_terrain_gate.unsqueeze(1)
+            target_by_height = target_by_height + rear_lift_target_offset * rear_offset_gate.float()
         new_target = torch.maximum(
             target_by_height,
             new_start + cfg.min_lift_height,
