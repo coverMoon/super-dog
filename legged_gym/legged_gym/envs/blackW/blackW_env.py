@@ -1271,6 +1271,34 @@ class BlackWEnv(BlackEnv):
 
         return torch.sum(continuous_penalty, dim=1)
 
+    def _reward_stairs_multi_contact_progress(self):
+        cfg = self.cfg.rewards.stairs_multi_contact_progress
+        terrain_type_ids = self._get_terrain_type_ids()
+        stairs_gate = terrain_type_ids == 3
+
+        command_x = torch.clamp(self.commands[:, 0], min=0.0)
+        command_gate = command_x > cfg.command_threshold
+
+        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
+        wheel_pos = wheel_states[:, :, :3]
+        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
+        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
+        contact_gate = horizontal_force > cfg.horizontal_force_threshold
+
+        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
+        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
+        obstacle_rel_height = obstacle_height - ground_height
+        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+        obstacle_contacts = contact_gate & obstacle_gate
+        contact_count = torch.sum(obstacle_contacts.int(), dim=1)
+        multi_contact_gate = contact_count >= int(cfg.min_contact_count)
+
+        forward_speed = torch.clamp(self.base_lin_vel[:, 0], min=0.0)
+        command_denom = torch.clamp(command_x, min=cfg.min_command_speed)
+        progress_reward = torch.clamp(forward_speed / command_denom, min=0.0, max=1.0)
+
+        return progress_reward * stairs_gate.float() * command_gate.float() * multi_contact_gate.float()
+
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
         flat_offsets = local_offsets.reshape(self.num_envs, -1, 3)

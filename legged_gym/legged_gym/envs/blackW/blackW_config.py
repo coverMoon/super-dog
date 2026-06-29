@@ -125,7 +125,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.1, 0.3, 0.1, 0.1, 0.0, 0.0, 0.0, 0.2]
+        terrain_proportions = [0.1, 0.05, 0.05, 0.6, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0]
         high_wall_fill_full_block = True
         high_wall_spawn_clearance = 0.8
         slope_treshold = 0.75
@@ -437,6 +437,13 @@ class BlackWCfg(BlackCfg):
             spin_threshold = 8.0
             progress_threshold = 0.25
 
+        class stairs_multi_contact_progress:
+            command_threshold = 0.2
+            horizontal_force_threshold = 15.0
+            obstacle_height_threshold = 0.02
+            min_contact_count = 2
+            min_command_speed = 0.2
+
         class wheel_lateral_clearance:
             command_threshold = 0.18
             full_command_threshold = 0.45
@@ -481,6 +488,7 @@ class BlackWCfg(BlackCfg):
             wheel_obstacle_lift = 2.0
             wheel_obstacle_unloaded_lift = -0.05
             wheel_obstacle_spin = -1.0
+            stairs_multi_contact_progress = 1.0
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
