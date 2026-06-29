@@ -408,12 +408,12 @@ class BlackWCfg(BlackCfg):
             min_lift_height = 0.05
             min_progress_span = 0.03
             active_time = 0.8
-            progress_weight = 0.7
+            progress_weight = 0.55
             target_sigma = 0.05
             over_lift_margin = 0.035
             over_lift_sigma = 0.04
-            over_lift_penalty_weight = 0.15
-            rear_lift_target_offset = 0.03
+            over_lift_penalty_weight = 0.12
+            rear_lift_target_offset = 0.02
             rear_lift_target_offset_terrain_types = [3]
             unloaded_lift_suppress_height = 0.05
             unloaded_lift_suppress_sigma = 0.05
@@ -452,7 +452,7 @@ class BlackWCfg(BlackCfg):
             obstacle_height_threshold = 0.02
             min_progress_span = 0.03
             front_pair_weight = 0.6
-            rear_pair_weight = 1.5
+            rear_pair_weight = 2.5
 
         class wheel_lateral_clearance:
             command_threshold = 0.18
@@ -499,7 +499,7 @@ class BlackWCfg(BlackCfg):
             wheel_obstacle_unloaded_lift = -0.05
             wheel_obstacle_spin = -1.0
             stairs_multi_contact_progress = 1.0
-            stairs_pair_escape = 0.5
+            stairs_pair_escape = 1.0
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
@@ -622,10 +622,10 @@ class BlackWCfgPPO(BlackCfgPPO):
         algorithm_class_name = 'HIMPPO'
         save_interval = 50
         num_steps_per_env = 64
-        max_iterations = 1000  
+        max_iterations = 1500  
         experiment_name = "rough_blackW_dog"
         run_name = ""
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jun29_18-04-29_"
+        load_run = "Jun29_21-55-59_"
