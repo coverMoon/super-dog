@@ -200,31 +200,33 @@ class BlackCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
         clearance_height_target = 0.08
-        soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
-        soft_dof_vel_limit = 0.85
-        soft_torque_limit = 0.80
+        soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
+        soft_dof_vel_limit = 1.0
+        soft_torque_limit = 1.0
         base_height_target = 0.43
+        tracking_sigma = 0.25
         only_positive_rewards = False
         class terrain_adaptive:
-            enabled = True
+            # Go1-style baseline first: disable terrain-adaptive reward reshaping.
+            enabled = False
             terrain_variability_clip = 0.30
 
             class orientation:
-                enabled = True
+                enabled = False
                 mode = "decay"
                 sigma = 0.009
                 min_scale = 0.15
                 max_scale = 1.0
 
             class smoothness:
-                enabled = True
+                enabled = False
                 mode = "decay"
                 sigma = 0.2
                 min_scale = 0.9
                 max_scale = 1.0
 
             class action_rate:
-                enabled = True
+                enabled = False
                 mode = "decay"
                 sigma = 0.01
                 min_scale = 0.20
@@ -245,7 +247,7 @@ class BlackCfg(LeggedRobotCfg):
                 max_scale = 1.5
 
             class foot_clearance:
-                enabled = True  # 是否启用地形自适应抬脚
+                enabled = False  # 是否启用地形自适应抬脚
                 mode = "margin"  # 用地形相关的抬脚裕量
                 std_gain = 2.0  # 地形起伏到额外抬脚高度的增益
                 max_extra_clearance = 0.15  # 额外抬脚高度上限[m]
@@ -269,35 +271,38 @@ class BlackCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            termination = -100.0
-            tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.5
-            lin_vel_z = -1.5
+            # Go1-like baseline rewards.
+            termination = -0.0
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+            lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -3.0
-            dof_acc = -0.0
-            joint_power = -1e-6
-            base_height = -3.0
-            foot_clearance = -10.0
-            action_rate = -0.3
+            orientation = -0.2
+            dof_acc = -2.5e-7
+            joint_power = -2e-5
+            base_height = -1.0
+            foot_clearance = -0.01
+            action_rate = -0.01
             smoothness = -0.01
-            feet_air_time = 1.0
-            collision = -0.05
-            feet_stumble = -1.0
-            stand_still = -1.0
-            torques = -1e-7
-            dof_vel = -1e-7
-            dof_pos_limits = -10.0
+            feet_air_time = 0.0
+            collision = -0.0
+            feet_stumble = -0.0
+            stand_still = -0.0
+            torques = -0.0
+            dof_vel = -0.0
+            dof_pos_limits = -0.0
             dof_vel_limits = -0.0
-            torque_limits = -1e-5
-            trot = 1.0
-            hip_pos = -0.5 
-            all_joint_pos = -0.001
-            foot_slip = -0.3
-            # feet_spacing = -0.1
-            foot_impact_vel = -10.0
-            progress = 1.0
-            raibert = 1.5
+            torque_limits = -0.0
+
+            # Black custom shaping disabled for the fresh Go1-like run.
+            trot = 0.0
+            hip_pos = 0.0
+            all_joint_pos = 0.0
+            foot_slip = 0.0
+            feet_spacing = 0.0
+            foot_impact_vel = 0.0
+            progress = 0.0
+            raibert = 0.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:

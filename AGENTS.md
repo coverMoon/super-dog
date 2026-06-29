@@ -11,11 +11,22 @@
 - `legged_gym/legged_gym/envs/base/`
 - `rsl_rl/rsl_rl/runners/`
 
-实验记录位于：
+实验记录按机器人分目录保存：
 
-- `日志/`
+- `日志/blackW/`：轮足 `blackW` 实验记录
+- `日志/black/`：点式足 `black` 实验记录
 
-修改重要 reward、curriculum、domain randomization、resume 行为后，应在 `日志/` 下新增中文记录。注意根据日期来补充并按日期来归类，每个日期只保留一个文件，若当日还没有日志，可自行新建一个。在记录时根据改动内容大小适量记录，不要过于冗长。
+修改重要 reward、curriculum、domain randomization、resume 行为后，应在对应机器人目录下新增中文记录。注意根据日期来补充并按日期来归类，每个机器人每天只保留一个文件，若当日还没有日志，可自行新建一个。在记录时根据改动内容大小适量记录，不要过于冗长。
+
+## 机器人上下文选择
+
+处理任务前先判断当前机器人上下文，只阅读对应目录的日志，不要同时读取 `black` 和 `blackW` 两套日志。判断优先级如下：
+
+- 用户明确提到 `black` 或 `blackW` 时，以用户指定为准。
+- 用户提到具体代码路径时，`envs/blackW/` 对应 `blackW`，`envs/black/` 对应 `black`。
+- 用户提到训练 run 时，优先从 run 所在日志目录、任务名或配置中的 `experiment_name` 推断机器人。
+- 若本轮没有新线索，则沿用当前对话中最近一次明确的机器人上下文。
+- 若仍无法判断，先问一句确认，不要为了保险同时读两边日志。
 
 ## 工作习惯
 
@@ -40,5 +51,6 @@
 python -m py_compile \
   legged_gym/legged_gym/envs/blackW/blackW_config.py \
   legged_gym/legged_gym/envs/blackW/blackW_env.py
+```
 
 注意：直接 import 任务配置可能因为缺少 isaacgym 环境失败，这不一定代表语法或代码逻辑错误。
