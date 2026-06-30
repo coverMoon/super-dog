@@ -311,8 +311,8 @@ class BlackWCfg(BlackCfg):
 
         orientation_terrain_adaptive = True
         orientation_terrain_variability_clip = 0.30
-        orientation_terrain_sigma = 0.0015
-        orientation_terrain_min_scale = 0.05
+        orientation_terrain_sigma = 0.0010
+        orientation_terrain_min_scale = 0.03
         orientation_terrain_max_scale = 1.0
 
         class hip_default:
@@ -408,12 +408,12 @@ class BlackWCfg(BlackCfg):
             min_lift_height = 0.05
             min_progress_span = 0.03
             active_time = 0.8
-            progress_weight = 0.50
+            progress_weight = 0.55
             target_sigma = 0.05
             over_lift_margin = 0.035
             over_lift_sigma = 0.04
-            over_lift_penalty_weight = 0.10
-            rear_lift_target_offset = 0.025
+            over_lift_penalty_weight = 0.12
+            rear_lift_target_offset = 0.02
             rear_lift_target_offset_terrain_types = [3]
             unloaded_lift_suppress_height = 0.05
             unloaded_lift_suppress_sigma = 0.05
@@ -504,6 +504,7 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
+            stairs_run_still = -0.8
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -516,7 +517,7 @@ class BlackWCfg(BlackCfg):
             wheel_obstacle_unloaded_lift = -0.05
             wheel_obstacle_spin = -1.0
             stairs_multi_contact_progress = 1.0
-            stairs_pair_escape = 1.2
+            stairs_pair_escape = 1.5
             stairs_rear_target_bonus = 0.0
             stairs_rear_stuck_escape = 0.0
             wheel_lateral_clearance = 0.45

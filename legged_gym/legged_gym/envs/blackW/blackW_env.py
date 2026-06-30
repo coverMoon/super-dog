@@ -1507,3 +1507,13 @@ class BlackWEnv(BlackEnv):
         y_still = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
         yaw_still = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
         return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_still & yaw_still).float()
+
+    def _reward_stairs_run_still(self):
+        dof_err = self.dof_pos - self.default_dof_pos
+        dof_err = dof_err.clone()
+        dof_err[:, self.wheel_indices] = 0.0
+        x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
+        y_still = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
+        yaw_still = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
+        stairs_gate = self._get_terrain_type_ids() == 3
+        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_still & yaw_still & stairs_gate).float()

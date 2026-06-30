@@ -271,30 +271,38 @@ class BlackCfg(LeggedRobotCfg):
             max_approach_speed = 0.4
 
         class scales:
-            # Go1-like baseline rewards.
-            termination = -0.0
+            # Command tracking.
+            # 指令跟踪奖励。
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
+
+            # Base posture and body stability.
+            # 机身姿态、高度与整体稳定性约束。
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             orientation = -0.2
-            dof_acc = -2.5e-7
-            joint_power = -2e-5
             base_height = -1.0
             foot_clearance = -0.01
+
+            # Action and actuator regularization.
+            # 动作平滑、功率与关节加速度正则项。
             action_rate = -0.01
             smoothness = -0.01
-            feet_air_time = 0.0
+            dof_acc = -2.5e-7
+            joint_power = -2e-5
+
+            # Disabled legacy or experimental terms.
+            # 当前关闭的历史项、严苛 sim2real shaping 或预留实验项。
+            termination = -0.0
             collision = -0.0
             feet_stumble = -0.0
+            feet_air_time = 0.0
             stand_still = -0.0
             torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
-
-            # Black custom shaping disabled for the fresh Go1-like run.
             trot = 0.0
             hip_pos = 0.0
             all_joint_pos = 0.0
