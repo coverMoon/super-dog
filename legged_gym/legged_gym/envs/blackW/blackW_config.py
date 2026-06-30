@@ -195,7 +195,7 @@ class BlackWCfg(BlackCfg):
         motor_strength_range = [0.9, 1.1]
 
         randomize_hip_motor_strength = True
-        hip_motor_strength_range = [0.8, 1.05]
+        hip_motor_strength_range = [0.75, 1.05]
 
         randomize_hip_damping = True
         hip_damping_scale_range = [0.8, 1.5]
@@ -204,8 +204,8 @@ class BlackWCfg(BlackCfg):
         # B2 sim2real approximation for calf linkage/gear play. The play mode
         # keeps the effective target inside a backlash window and weakens Kp in free play.
         calf_backlash_mode = "play"
-        calf_backlash_range = [0.005, 0.035]
-        calf_backlash_min_kp_scale = 0.12
+        calf_backlash_range = [0.01, 0.055]
+        calf_backlash_min_kp_scale = 0.08
         calf_backlash_engage_start = 0.6
         calf_backlash_leak = 0.02
 
@@ -507,7 +507,7 @@ class BlackWCfg(BlackCfg):
             wheel_obstacle_spin = -1.0
             stairs_multi_contact_progress = 1.0
             stairs_pair_escape = 1.0
-            stairs_rear_target_bonus = 0.5
+            stairs_rear_target_bonus = 0.0
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
@@ -630,10 +630,10 @@ class BlackWCfgPPO(BlackCfgPPO):
         algorithm_class_name = 'HIMPPO'
         save_interval = 50
         num_steps_per_env = 64
-        max_iterations = 1500  
+        max_iterations = 2000  
         experiment_name = "rough_blackW_dog"
         run_name = ""
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jun29_21-55-59_"
+        load_run = "Jun30_01-27-21_"
