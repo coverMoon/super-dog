@@ -247,6 +247,7 @@ class BlackWEnv(BlackEnv):
             raise RuntimeError(f"Expected 4 wheel bodies, got {len(self.wheel_body_indices)} from {self.body_names}")
 
         self.wheel_body_leg_indices = self._resolve_leg_order_indices(wheel_body_names, "wheel body")
+        self.wheel_dof_leg_indices = self._resolve_leg_order_indices(wheel_names, "wheel dof")
 
         print("### blackW dof names:", self.dof_names)
         print("### blackW wheel indices:", self.wheel_indices.detach().cpu().tolist())
@@ -1396,6 +1397,62 @@ class BlackWEnv(BlackEnv):
             high_progress[:, rr] * rear_ready[:, rr].float(),
         )
         return rear_bonus * stairs_gate.float() * command_gate.float()
+
+    def _reward_stairs_rear_stuck_escape(self):
+        cfg = self.cfg.rewards.stairs_rear_stuck_escape
+        if not hasattr(self, "wheel_body_leg_indices") or not hasattr(self, "wheel_dof_leg_indices"):
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+
+        terrain_type_ids = self._get_terrain_type_ids()
+        stairs_gate = terrain_type_ids == 3
+
+        command_x = torch.clamp(self.commands[:, 0], min=0.0)
+        command_gate = command_x > cfg.command_threshold
+        command_denom = torch.clamp(command_x, min=cfg.min_command_speed)
+        forward_speed = torch.clamp(self.base_lin_vel[:, 0], min=0.0)
+        progress_ratio = torch.clamp(forward_speed / command_denom, min=0.0, max=1.0)
+        low_progress_gate = progress_ratio < cfg.progress_ratio_threshold
+
+        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
+        wheel_pos = wheel_states[:, :, :3]
+        wheel_z = wheel_states[:, :, 2]
+        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
+        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
+        contact_gate = horizontal_force > cfg.horizontal_force_threshold
+
+        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
+        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
+        obstacle_rel_height = obstacle_height - ground_height
+        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
+
+        ordered_contacts = (contact_gate & obstacle_gate)[:, self.wheel_body_leg_indices]
+        ordered_active = (self.wheel_obstacle_lift_timer > 0.0)[:, self.wheel_body_leg_indices]
+        ordered_wheel_z = wheel_z[:, self.wheel_body_leg_indices]
+        ordered_start_z = self.wheel_obstacle_lift_start_z[:, self.wheel_body_leg_indices]
+        ordered_target_z = self.wheel_obstacle_lift_target_z[:, self.wheel_body_leg_indices]
+
+        wheel_surface_speed = torch.abs(self.dof_vel[:, self.wheel_indices]) * self.cfg.control.wheel_radius
+        ordered_surface_speed = wheel_surface_speed[:, self.wheel_dof_leg_indices]
+        ordered_slip_speed = torch.clamp(ordered_surface_speed - forward_speed.unsqueeze(1), min=0.0)
+
+        lift_span = torch.clamp(ordered_target_z - ordered_start_z, min=cfg.min_progress_span)
+        lift_progress = torch.clamp((ordered_wheel_z - ordered_start_z) / lift_span, min=0.0, max=1.0)
+        threshold = float(cfg.high_progress_threshold)
+        rear_progress = torch.clamp((lift_progress - threshold) / max(1.0 - threshold, 1e-6), min=0.0, max=1.0)
+
+        rl, rr = 2, 3
+        rear_ready = ordered_contacts & ordered_active
+        rear_contact_gate = rear_ready[:, rl] | rear_ready[:, rr]
+        rear_slip_gate = (
+            (ordered_slip_speed[:, rl] > cfg.slip_speed_threshold)
+            | (ordered_slip_speed[:, rr] > cfg.slip_speed_threshold)
+        )
+        stuck_gate = rear_contact_gate & rear_slip_gate & low_progress_gate
+        rear_escape = torch.maximum(
+            rear_progress[:, rl] * rear_ready[:, rl].float(),
+            rear_progress[:, rr] * rear_ready[:, rr].float(),
+        )
+        return rear_escape * stairs_gate.float() * command_gate.float() * stuck_gate.float()
 
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
