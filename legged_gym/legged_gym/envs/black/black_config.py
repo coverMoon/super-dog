@@ -297,7 +297,7 @@ class BlackCfg(LeggedRobotCfg):
         class scales:
             # Command tracking.
             # 指令跟踪奖励。
-            tracking_lin_vel = 1.5
+            tracking_lin_vel = 2.0
             tracking_ang_vel = 1.0
 
             # Base posture and body stability.
@@ -319,7 +319,7 @@ class BlackCfg(LeggedRobotCfg):
 
             # Stand Config.
             # 静止站立。
-            stand_still = -0.6
+            stand_still = -0.8
             stand_torque_balance = -0.5
 
             # Action and actuator regularization.
