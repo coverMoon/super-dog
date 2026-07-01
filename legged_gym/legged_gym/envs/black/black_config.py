@@ -78,7 +78,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class commands:
         curriculum = True
-        max_curriculum = 3.0
+        max_curriculum = 2.0
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
@@ -105,7 +105,7 @@ class BlackCfg(LeggedRobotCfg):
         randomize_com_displacement = True
         # com_displacement_range = [-0.05, 0.05]
         com_displacement_range_x = [-0.08, 0.08]
-        com_displacement_range_y = [-0.05, 0.05]
+        com_displacement_range_y = [-0.02, 0.02]
         com_displacement_range_z = [-0.05, 0.05]
 
         randomize_link_mass = True
@@ -133,7 +133,7 @@ class BlackCfg(LeggedRobotCfg):
         inertia_range = [0.5, 1.5]
 
         disturbance = True
-        disturbance_range = [-35.0, 35.0]
+        disturbance_range = [-30.0, 30.0]
         disturbance_interval = 8
         
         push_robots = True
@@ -283,8 +283,8 @@ class BlackCfg(LeggedRobotCfg):
             # 机身姿态、高度与整体稳定性约束。
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -1.0
-            base_height = -5.0
+            orientation = -0.2
+            base_height = -1.0
             foot_clearance = -0.01
 
             # Contact handling.
@@ -293,11 +293,10 @@ class BlackCfg(LeggedRobotCfg):
 
             # Action and actuator regularization.
             # 动作平滑、功率与关节加速度正则项。
-            action_rate = -0.05
-            smoothness = -0.0105
+            action_rate = -0.01
+            smoothness = -0.01
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            torques = -6.5e-4
 
             # Disabled legacy or experimental terms.
             # 当前关闭的历史项、严苛 sim2real shaping 或预留实验项。
@@ -305,6 +304,7 @@ class BlackCfg(LeggedRobotCfg):
             feet_stumble = -0.0
             feet_air_time = 0.0
             stand_still = -0.0
+            torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
@@ -374,7 +374,8 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        num_steps_per_env = 100
+        save_interval = 50
+        num_steps_per_env = 64
         experiment_name = 'rough_black_dog'
         max_iterations=1000
          
