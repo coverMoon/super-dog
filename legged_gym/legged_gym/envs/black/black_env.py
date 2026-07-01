@@ -114,29 +114,54 @@ class BlackEnv(LeggedRobot):
         super()._resample_commands(env_ids)
 
         probe_cfg = getattr(self.cfg.commands, "terrain_probe", None)
-        if probe_cfg is None or not getattr(probe_cfg, "enabled", False) or len(env_ids) == 0:
+        if len(env_ids) == 0:
             return
 
-        probe_fraction = max(0.0, min(float(getattr(probe_cfg, "env_fraction", 0.0)), 1.0))
-        probe_env_ids = self._get_terrain_probe_env_ids(env_ids, probe_fraction)
-        if len(probe_env_ids) == 0:
-            return
+        terrain_probe_fraction = 0.0
+        if probe_cfg is not None and getattr(probe_cfg, "enabled", False):
+            terrain_probe_fraction = max(0.0, min(float(getattr(probe_cfg, "env_fraction", 0.0)), 1.0))
+            probe_env_ids = self._get_command_probe_env_ids(
+                env_ids,
+                terrain_probe_fraction,
+                per_terrain_type=getattr(probe_cfg, "per_terrain_type", True),
+            )
+            if len(probe_env_ids) > 0:
+                x_cmd = float(getattr(probe_cfg, "lin_vel_x", 0.8))
+                x_cmd = max(self.command_ranges["lin_vel_x"][0], min(x_cmd, self.command_ranges["lin_vel_x"][1]))
+                self.commands[probe_env_ids, 0] = x_cmd
+                self.commands[probe_env_ids, 1] = float(getattr(probe_cfg, "lin_vel_y", 0.0))
+                self.commands[probe_env_ids, 2] = float(getattr(probe_cfg, "ang_vel_yaw", 0.0))
+                if self.cfg.commands.heading_command:
+                    self.commands[probe_env_ids, 3] = 0.0
 
-        x_cmd = float(getattr(probe_cfg, "lin_vel_x", 0.8))
-        x_cmd = max(self.command_ranges["lin_vel_x"][0], min(x_cmd, self.command_ranges["lin_vel_x"][1]))
-        self.commands[probe_env_ids, 0] = x_cmd
-        self.commands[probe_env_ids, 1] = float(getattr(probe_cfg, "lin_vel_y", 0.0))
-        self.commands[probe_env_ids, 2] = float(getattr(probe_cfg, "ang_vel_yaw", 0.0))
-        if self.cfg.commands.heading_command:
-            self.commands[probe_env_ids, 3] = 0.0
+        stand_cfg = getattr(self.cfg.commands, "stand_probe", None)
+        if stand_cfg is not None and getattr(stand_cfg, "enabled", False):
+            stand_fraction = max(0.0, min(float(getattr(stand_cfg, "env_fraction", 0.0)), 1.0))
+            start_fraction = terrain_probe_fraction if getattr(stand_cfg, "per_terrain_type", True) else 0.0
+            stand_env_ids = self._get_command_probe_env_ids(
+                env_ids,
+                stand_fraction,
+                start_fraction=start_fraction,
+                per_terrain_type=getattr(stand_cfg, "per_terrain_type", True),
+            )
+            if len(stand_env_ids) > 0:
+                self.commands[stand_env_ids, 0] = float(getattr(stand_cfg, "lin_vel_x", 0.0))
+                self.commands[stand_env_ids, 1] = float(getattr(stand_cfg, "lin_vel_y", 0.0))
+                self.commands[stand_env_ids, 2] = float(getattr(stand_cfg, "ang_vel_yaw", 0.0))
+                if self.cfg.commands.heading_command:
+                    self.commands[stand_env_ids, 3] = 0.0
 
     def _get_terrain_probe_env_ids(self, env_ids, probe_fraction):
+        return self._get_command_probe_env_ids(env_ids, probe_fraction)
+
+    def _get_command_probe_env_ids(self, env_ids, probe_fraction, start_fraction=0.0, per_terrain_type=True):
         if probe_fraction <= 0.0:
             return env_ids[:0]
 
-        probe_cfg = self.cfg.commands.terrain_probe
+        start_fraction = max(0.0, min(float(start_fraction), 1.0))
+        end_fraction = max(start_fraction, min(start_fraction + probe_fraction, 1.0))
         if (
-            getattr(probe_cfg, "per_terrain_type", True)
+            per_terrain_type
             and hasattr(self, "terrain_types")
             and self.cfg.terrain.curriculum
             and self.cfg.terrain.num_cols > 0
@@ -146,14 +171,18 @@ class BlackEnv(LeggedRobot):
             col_starts = torch.floor(terrain_cols * envs_per_col).long()
             col_ends = torch.floor((terrain_cols + 1.0) * envs_per_col).long()
             col_sizes = torch.clamp(col_ends - col_starts, min=1)
-            probe_limits = torch.clamp(torch.round(col_sizes.float() * probe_fraction).long(), min=1)
+            probe_starts = torch.round(col_sizes.float() * start_fraction).long()
+            probe_limits = torch.round(col_sizes.float() * end_fraction).long()
+            probe_limits = torch.maximum(probe_limits, probe_starts + 1)
+            probe_limits = torch.minimum(probe_limits, col_sizes)
             col_offsets = env_ids - col_starts
-            return env_ids[col_offsets < probe_limits]
+            return env_ids[(col_offsets >= probe_starts) & (col_offsets < probe_limits)]
 
-        probe_count = int(round(self.num_envs * probe_fraction))
-        if probe_count <= 0:
+        probe_start = int(round(self.num_envs * start_fraction))
+        probe_end = int(round(self.num_envs * end_fraction))
+        if probe_end <= probe_start:
             return env_ids[:0]
-        return env_ids[env_ids < probe_count]
+        return env_ids[(env_ids >= probe_start) & (env_ids < probe_end)]
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -719,28 +748,25 @@ class BlackEnv(LeggedRobot):
 
     def _reward_stand_feet_force_balance(self):
         """
-        静止站立时惩罚左右侧足端支撑力不平衡。
+        静止站立时惩罚左右镜像足端支撑力不平衡。
         默认只比较 z 轴法向支撑力，避免把必要的水平摩擦/抗扰剪切力压掉。
         """
         cfg = self.cfg.rewards.stand_feet_force_balance
 
-        if not hasattr(self, "stand_feet_force_balance_left_indices"):
+        if not hasattr(self, "stand_feet_force_balance_pair_indices"):
             foot_name_to_idx = {}
             for i, foot_name in enumerate(self.feet_names):
                 foot_name_to_idx[foot_name.split("_")[0]] = i
 
-            left_indices = [foot_name_to_idx[name] for name in cfg.left_feet if name in foot_name_to_idx]
-            right_indices = [foot_name_to_idx[name] for name in cfg.right_feet if name in foot_name_to_idx]
-            self.stand_feet_force_balance_left_indices = torch.tensor(
-                left_indices, dtype=torch.long, device=self.device, requires_grad=False
-            )
-            self.stand_feet_force_balance_right_indices = torch.tensor(
-                right_indices, dtype=torch.long, device=self.device, requires_grad=False
+            pair_indices = []
+            for left_name, right_name in cfg.pairs:
+                if left_name in foot_name_to_idx and right_name in foot_name_to_idx:
+                    pair_indices.append((foot_name_to_idx[left_name], foot_name_to_idx[right_name]))
+            self.stand_feet_force_balance_pair_indices = torch.tensor(
+                pair_indices, dtype=torch.long, device=self.device, requires_grad=False
             )
 
-        left_idx = self.stand_feet_force_balance_left_indices
-        right_idx = self.stand_feet_force_balance_right_indices
-        if left_idx.numel() == 0 or right_idx.numel() == 0:
+        if self.stand_feet_force_balance_pair_indices.numel() == 0:
             return torch.zeros(self.num_envs, device=self.device)
 
         stand_mask = (
@@ -748,20 +774,23 @@ class BlackEnv(LeggedRobot):
             & (torch.abs(self.commands[:, 2]) < cfg.yaw_threshold)
         )
 
+        left_idx = self.stand_feet_force_balance_pair_indices[:, 0]
+        right_idx = self.stand_feet_force_balance_pair_indices[:, 1]
         foot_forces = self.contact_forces[:, self.feet_indices, :]
         if getattr(cfg, "axis", "z") == "xyz":
-            left_load = torch.norm(torch.sum(foot_forces[:, left_idx, :], dim=1), dim=1)
-            right_load = torch.norm(torch.sum(foot_forces[:, right_idx, :], dim=1), dim=1)
+            left_load = torch.norm(foot_forces[:, left_idx, :], dim=2)
+            right_load = torch.norm(foot_forces[:, right_idx, :], dim=2)
         else:
             foot_forces_z = torch.clamp(foot_forces[:, :, 2], min=0.0)
-            left_load = torch.sum(foot_forces_z[:, left_idx], dim=1)
-            right_load = torch.sum(foot_forces_z[:, right_idx], dim=1)
+            left_load = foot_forces_z[:, left_idx]
+            right_load = foot_forces_z[:, right_idx]
 
-        total_load = left_load + right_load
-        valid_contact = total_load > cfg.min_total_force
-        normalized_error = (left_load - right_load) / torch.clamp(total_load, min=cfg.min_total_force)
-        penalty = torch.square(normalized_error)
-        return penalty * stand_mask.float() * valid_contact.float()
+        pair_load = left_load + right_load
+        min_pair_force = float(getattr(cfg, "min_pair_force", getattr(cfg, "min_total_force", 5.0)))
+        valid_contact = pair_load > min_pair_force
+        normalized_error = (left_load - right_load) / torch.clamp(pair_load, min=min_pair_force)
+        penalty = torch.mean(torch.square(normalized_error) * valid_contact.float(), dim=1)
+        return penalty * stand_mask.float()
     
     def _reward_feet_spacing(self):
         # 1. 获取脚部世界坐标 (Global Position)

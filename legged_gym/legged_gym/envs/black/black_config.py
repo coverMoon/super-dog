@@ -95,6 +95,14 @@ class BlackCfg(LeggedRobotCfg):
             lin_vel_y = 0.0
             ang_vel_yaw = 0.0
 
+        class stand_probe:
+            enabled = True
+            env_fraction = 0.05
+            per_terrain_type = True
+            lin_vel_x = 0.0
+            lin_vel_y = 0.0
+            ang_vel_yaw = 0.0
+
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -109,12 +117,12 @@ class BlackCfg(LeggedRobotCfg):
 
     class domain_rand:
         randomize_payload_mass = True
-        payload_mass_range = [-2.0, 4.0]
+        payload_mass_range = [-2.0, 5.0]
 
         randomize_com_displacement = True
         # com_displacement_range = [-0.05, 0.05]
         com_displacement_range_x = [-0.08, 0.08]
-        com_displacement_range_y = [-0.02, 0.02]
+        com_displacement_range_y = [-0.05, 0.05]
         com_displacement_range_z = [-0.05, 0.05]
 
         randomize_link_mass = True
@@ -298,9 +306,11 @@ class BlackCfg(LeggedRobotCfg):
             command_threshold = 0.10
             yaw_threshold = 0.10
             axis = "z"
-            min_total_force = 20.0
-            left_feet = ("FL", "RL")
-            right_feet = ("FR", "RR")
+            min_pair_force = 5.0
+            pairs = [
+                ("FL", "FR"),
+                ("RL", "RR"),
+            ]
 
         class scales:
             # Command tracking.
@@ -315,11 +325,11 @@ class BlackCfg(LeggedRobotCfg):
             ang_vel_xy = -0.05
             orientation = -0.2
             base_height = -1.0
-            foot_clearance = -1.0
+            foot_clearance = -2.0
 
             # Gait shaping.
             feet_spacing = -0.08
-            raibert = 0.8
+            raibert = 1.0
 
             # Contact handling.
             # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
