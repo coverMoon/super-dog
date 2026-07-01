@@ -86,6 +86,14 @@ class BlackCfg(LeggedRobotCfg):
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = False # if true: compute ang vel command from heading error
+
+        class terrain_probe:
+            enabled = True
+            env_fraction = 0.10
+            lin_vel_x = 0.8
+            lin_vel_y = 0.0
+            ang_vel_yaw = 0.0
+
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -202,7 +210,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
-        clearance_height_target = 0.08
+        clearance_height_target = 0.06
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
@@ -273,27 +281,45 @@ class BlackCfg(LeggedRobotCfg):
             approach_bonus = 0.25
             max_approach_speed = 0.4
 
+        class stand_torque_balance:
+            command_threshold = 0.10
+            yaw_threshold = 0.10
+            pairs = [
+                ("FL_hip_joint", "FR_hip_joint"),
+                ("RL_hip_joint", "RR_hip_joint"),
+                ("FL_thigh_joint", "FR_thigh_joint"),
+                ("RL_thigh_joint", "RR_thigh_joint"),
+                ("FL_calf_joint", "FR_calf_joint"),
+                ("RL_calf_joint", "RR_calf_joint"),
+            ]
+
         class scales:
             # Command tracking.
             # 指令跟踪奖励。
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
+            tracking_lin_vel = 1.5
+            tracking_ang_vel = 1.0
 
             # Base posture and body stability.
             # 机身姿态、高度与整体稳定性约束。
+            hip_pos = -0.5
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -0.2
+            orientation = -1.0
             base_height = -1.0
-            foot_clearance = -0.01
+            foot_clearance = -0.5
 
             # Contact handling.
             # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
             collision = -0.05
 
+            # Stand Config.
+            # 静止站立。
+            stand_still = -0.6
+            stand_torque_balance = -0.1
+
             # Action and actuator regularization.
             # 动作平滑、功率与关节加速度正则项。
-            action_rate = -0.01
+            action_rate = -0.03
             smoothness = -0.01
             dof_acc = -2.5e-7
             joint_power = -2e-5
@@ -303,14 +329,12 @@ class BlackCfg(LeggedRobotCfg):
             termination = -0.0
             feet_stumble = -0.0
             feet_air_time = 0.0
-            stand_still = -0.0
             torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
             trot = 0.0
-            hip_pos = 0.0
             all_joint_pos = 0.0
             foot_slip = 0.0
             feet_spacing = 0.0

@@ -110,6 +110,30 @@ class BlackEnv(LeggedRobot):
         )
         return feet_pos_body, feet_vel_body
 
+    def _resample_commands(self, env_ids):
+        super()._resample_commands(env_ids)
+
+        probe_cfg = getattr(self.cfg.commands, "terrain_probe", None)
+        if probe_cfg is None or not getattr(probe_cfg, "enabled", False) or len(env_ids) == 0:
+            return
+
+        probe_fraction = max(0.0, min(float(getattr(probe_cfg, "env_fraction", 0.0)), 1.0))
+        probe_count = int(round(self.num_envs * probe_fraction))
+        if probe_count <= 0:
+            return
+
+        probe_env_ids = env_ids[env_ids < probe_count]
+        if len(probe_env_ids) == 0:
+            return
+
+        x_cmd = float(getattr(probe_cfg, "lin_vel_x", 0.8))
+        x_cmd = max(self.command_ranges["lin_vel_x"][0], min(x_cmd, self.command_ranges["lin_vel_x"][1]))
+        self.commands[probe_env_ids, 0] = x_cmd
+        self.commands[probe_env_ids, 1] = float(getattr(probe_cfg, "lin_vel_y", 0.0))
+        self.commands[probe_env_ids, 2] = float(getattr(probe_cfg, "ang_vel_yaw", 0.0))
+        if self.cfg.commands.heading_command:
+            self.commands[probe_env_ids, 3] = 0.0
+
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
 
@@ -639,6 +663,38 @@ class BlackEnv(LeggedRobot):
         """
 
         return torch.sum(torch.square(self.dof_pos[:,:] - self.default_dof_pos[:,:]), dim=1)
+
+    def _reward_stand_torque_balance(self):
+        """
+        静止站立时惩罚左右对称电机力矩幅值不平衡。
+        使用归一化力矩幅值，避免左右关节轴方向不同造成符号误判。
+        """
+        if not hasattr(self, "stand_torque_balance_pair_indices"):
+            name_to_idx = {name: i for i, name in enumerate(self.dof_names)}
+            pair_indices = []
+            for left_name, right_name in self.cfg.rewards.stand_torque_balance.pairs:
+                if left_name in name_to_idx and right_name in name_to_idx:
+                    pair_indices.append((name_to_idx[left_name], name_to_idx[right_name]))
+            self.stand_torque_balance_pair_indices = torch.tensor(
+                pair_indices, dtype=torch.long, device=self.device, requires_grad=False
+            )
+
+        if self.stand_torque_balance_pair_indices.numel() == 0:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        cfg = self.cfg.rewards.stand_torque_balance
+        stand_mask = (
+            (torch.norm(self.commands[:, :2], dim=1) < cfg.command_threshold)
+            & (torch.abs(self.commands[:, 2]) < cfg.yaw_threshold)
+        )
+
+        left_idx = self.stand_torque_balance_pair_indices[:, 0]
+        right_idx = self.stand_torque_balance_pair_indices[:, 1]
+        torque_limits = torch.clamp(self.torque_limits, min=1e-6)
+        left_torque = torch.abs(self.torques[:, left_idx] / torque_limits[left_idx])
+        right_torque = torch.abs(self.torques[:, right_idx] / torque_limits[right_idx])
+        penalty = torch.mean(torch.square(left_torque - right_torque), dim=1)
+        return penalty * stand_mask.float()
     
     def _reward_feet_spacing(self):
         # 1. 获取脚部世界坐标 (Global Position)
