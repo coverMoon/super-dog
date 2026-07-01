@@ -1074,7 +1074,7 @@ class LeggedRobot(BaseTask):
 
     def _sample_com_displacement(self):
         cfg = self.cfg.domain_rand
-        fallback_range = cfg.com_displacement_range
+        fallback_range = getattr(cfg, "com_displacement_range", [0.0, 0.0])
         axis_ranges = (
             getattr(cfg, "com_displacement_range_x", fallback_range),
             getattr(cfg, "com_displacement_range_y", fallback_range),
