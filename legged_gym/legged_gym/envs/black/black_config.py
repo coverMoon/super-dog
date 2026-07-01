@@ -4,7 +4,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class BlackCfg(LeggedRobotCfg):
     class init_state(LeggedRobotCfg.init_state):
         # 1. 初始姿态
-        pos = [0.0, 0.0, 0.45] 
+        pos = [0.0, 0.0, 0.48] 
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
@@ -294,6 +294,14 @@ class BlackCfg(LeggedRobotCfg):
                 ("RL_calf_joint", "RR_calf_joint"),
             ]
 
+        class stand_feet_force_balance:
+            command_threshold = 0.10
+            yaw_threshold = 0.10
+            axis = "z"
+            min_total_force = 20.0
+            left_feet = ("FL", "RL")
+            right_feet = ("FR", "RR")
+
         class scales:
             # Command tracking.
             # 指令跟踪奖励。
@@ -307,11 +315,11 @@ class BlackCfg(LeggedRobotCfg):
             ang_vel_xy = -0.05
             orientation = -0.2
             base_height = -1.0
-            foot_clearance = -0.5
+            foot_clearance = -1.0
 
             # Gait shaping.
             feet_spacing = -0.08
-            raibert = 0.1
+            raibert = 0.8
 
             # Contact handling.
             # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
@@ -320,12 +328,13 @@ class BlackCfg(LeggedRobotCfg):
             # Stand Config.
             # 静止站立。
             stand_still = -0.8
-            stand_torque_balance = -0.5
+            stand_torque_balance = -1.0
+            stand_feet_force_balance = -0.5
 
             # Action and actuator regularization.
             # 动作平滑、功率与关节加速度正则项。
-            action_rate = -0.03
-            smoothness = -0.01
+            action_rate = -0.05
+            smoothness = -0.0101
             dof_acc = -2.5e-7
             joint_power = -2e-5
 

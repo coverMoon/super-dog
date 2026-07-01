@@ -716,6 +716,52 @@ class BlackEnv(LeggedRobot):
         right_torque = torch.abs(self.torques[:, right_idx] / torque_limits[right_idx])
         penalty = torch.mean(torch.square(left_torque - right_torque), dim=1)
         return penalty * stand_mask.float()
+
+    def _reward_stand_feet_force_balance(self):
+        """
+        静止站立时惩罚左右侧足端支撑力不平衡。
+        默认只比较 z 轴法向支撑力，避免把必要的水平摩擦/抗扰剪切力压掉。
+        """
+        cfg = self.cfg.rewards.stand_feet_force_balance
+
+        if not hasattr(self, "stand_feet_force_balance_left_indices"):
+            foot_name_to_idx = {}
+            for i, foot_name in enumerate(self.feet_names):
+                foot_name_to_idx[foot_name.split("_")[0]] = i
+
+            left_indices = [foot_name_to_idx[name] for name in cfg.left_feet if name in foot_name_to_idx]
+            right_indices = [foot_name_to_idx[name] for name in cfg.right_feet if name in foot_name_to_idx]
+            self.stand_feet_force_balance_left_indices = torch.tensor(
+                left_indices, dtype=torch.long, device=self.device, requires_grad=False
+            )
+            self.stand_feet_force_balance_right_indices = torch.tensor(
+                right_indices, dtype=torch.long, device=self.device, requires_grad=False
+            )
+
+        left_idx = self.stand_feet_force_balance_left_indices
+        right_idx = self.stand_feet_force_balance_right_indices
+        if left_idx.numel() == 0 or right_idx.numel() == 0:
+            return torch.zeros(self.num_envs, device=self.device)
+
+        stand_mask = (
+            (torch.norm(self.commands[:, :2], dim=1) < cfg.command_threshold)
+            & (torch.abs(self.commands[:, 2]) < cfg.yaw_threshold)
+        )
+
+        foot_forces = self.contact_forces[:, self.feet_indices, :]
+        if getattr(cfg, "axis", "z") == "xyz":
+            left_load = torch.norm(torch.sum(foot_forces[:, left_idx, :], dim=1), dim=1)
+            right_load = torch.norm(torch.sum(foot_forces[:, right_idx, :], dim=1), dim=1)
+        else:
+            foot_forces_z = torch.clamp(foot_forces[:, :, 2], min=0.0)
+            left_load = torch.sum(foot_forces_z[:, left_idx], dim=1)
+            right_load = torch.sum(foot_forces_z[:, right_idx], dim=1)
+
+        total_load = left_load + right_load
+        valid_contact = total_load > cfg.min_total_force
+        normalized_error = (left_load - right_load) / torch.clamp(total_load, min=cfg.min_total_force)
+        penalty = torch.square(normalized_error)
+        return penalty * stand_mask.float() * valid_contact.float()
     
     def _reward_feet_spacing(self):
         # 1. 获取脚部世界坐标 (Global Position)
