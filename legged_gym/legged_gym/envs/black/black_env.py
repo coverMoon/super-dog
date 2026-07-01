@@ -118,11 +118,7 @@ class BlackEnv(LeggedRobot):
             return
 
         probe_fraction = max(0.0, min(float(getattr(probe_cfg, "env_fraction", 0.0)), 1.0))
-        probe_count = int(round(self.num_envs * probe_fraction))
-        if probe_count <= 0:
-            return
-
-        probe_env_ids = env_ids[env_ids < probe_count]
+        probe_env_ids = self._get_terrain_probe_env_ids(env_ids, probe_fraction)
         if len(probe_env_ids) == 0:
             return
 
@@ -133,6 +129,31 @@ class BlackEnv(LeggedRobot):
         self.commands[probe_env_ids, 2] = float(getattr(probe_cfg, "ang_vel_yaw", 0.0))
         if self.cfg.commands.heading_command:
             self.commands[probe_env_ids, 3] = 0.0
+
+    def _get_terrain_probe_env_ids(self, env_ids, probe_fraction):
+        if probe_fraction <= 0.0:
+            return env_ids[:0]
+
+        probe_cfg = self.cfg.commands.terrain_probe
+        if (
+            getattr(probe_cfg, "per_terrain_type", True)
+            and hasattr(self, "terrain_types")
+            and self.cfg.terrain.curriculum
+            and self.cfg.terrain.num_cols > 0
+        ):
+            envs_per_col = self.num_envs / float(self.cfg.terrain.num_cols)
+            terrain_cols = self.terrain_types[env_ids].float()
+            col_starts = torch.floor(terrain_cols * envs_per_col).long()
+            col_ends = torch.floor((terrain_cols + 1.0) * envs_per_col).long()
+            col_sizes = torch.clamp(col_ends - col_starts, min=1)
+            probe_limits = torch.clamp(torch.round(col_sizes.float() * probe_fraction).long(), min=1)
+            col_offsets = env_ids - col_starts
+            return env_ids[col_offsets < probe_limits]
+
+        probe_count = int(round(self.num_envs * probe_fraction))
+        if probe_count <= 0:
+            return env_ids[:0]
+        return env_ids[env_ids < probe_count]
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()

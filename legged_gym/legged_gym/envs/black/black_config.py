@@ -90,6 +90,7 @@ class BlackCfg(LeggedRobotCfg):
         class terrain_probe:
             enabled = True
             env_fraction = 0.10
+            per_terrain_type = True
             lin_vel_x = 0.8
             lin_vel_y = 0.0
             ang_vel_yaw = 0.0
@@ -210,7 +211,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
-        clearance_height_target = 0.06
+        clearance_height_target = 0.09
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
@@ -268,12 +269,12 @@ class BlackCfg(LeggedRobotCfg):
         class raibert:
             nominal_front_x = 0.21
             nominal_rear_x = -0.21
-            nominal_y = 0.155
+            nominal_y = 0.17
             max_linear_offset_x = 0.16
-            max_linear_offset_y = 0.06
+            max_linear_offset_y = 0.08
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.10
+            max_yaw_offset = 0.12
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
             late_swing_start_latyaw = 0.0
@@ -301,12 +302,16 @@ class BlackCfg(LeggedRobotCfg):
 
             # Base posture and body stability.
             # 机身姿态、高度与整体稳定性约束。
-            hip_pos = -0.5
+            hip_pos = -0.6
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -1.0
+            orientation = -0.2
             base_height = -1.0
             foot_clearance = -0.5
+
+            # Gait shaping.
+            feet_spacing = -0.08
+            raibert = 0.1
 
             # Contact handling.
             # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
@@ -315,7 +320,7 @@ class BlackCfg(LeggedRobotCfg):
             # Stand Config.
             # 静止站立。
             stand_still = -0.6
-            stand_torque_balance = -0.1
+            stand_torque_balance = -0.5
 
             # Action and actuator regularization.
             # 动作平滑、功率与关节加速度正则项。
@@ -337,10 +342,8 @@ class BlackCfg(LeggedRobotCfg):
             trot = 0.0
             all_joint_pos = 0.0
             foot_slip = 0.0
-            feet_spacing = 0.0
             foot_impact_vel = 0.0
             progress = 0.0
-            raibert = 0.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
