@@ -78,7 +78,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class commands:
         curriculum = True
-        max_curriculum = 2.0
+        max_curriculum = 3.0
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
@@ -211,7 +211,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
-        clearance_height_target = 0.09
+        clearance_height_target = 0.08
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
