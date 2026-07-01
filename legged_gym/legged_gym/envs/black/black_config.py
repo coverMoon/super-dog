@@ -117,12 +117,12 @@ class BlackCfg(LeggedRobotCfg):
 
     class domain_rand:
         randomize_payload_mass = True
-        payload_mass_range = [-2.0, 5.0]
+        payload_mass_range = [-2.0, 4.0]
 
         randomize_com_displacement = True
         # com_displacement_range = [-0.05, 0.05]
         com_displacement_range_x = [-0.08, 0.08]
-        com_displacement_range_y = [-0.05, 0.05]
+        com_displacement_range_y = [-0.02, 0.02]
         com_displacement_range_z = [-0.05, 0.05]
 
         randomize_link_mass = True
@@ -219,7 +219,7 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
-        clearance_height_target = 0.08
+        clearance_height_target = 0.1
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
@@ -323,13 +323,13 @@ class BlackCfg(LeggedRobotCfg):
             hip_pos = -0.6
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -0.2
+            orientation = -0.8
             base_height = -1.0
-            foot_clearance = -2.0
+            foot_clearance = -1.0
 
             # Gait shaping.
             feet_spacing = -0.08
-            raibert = 1.0
+            raibert = 0.8
 
             # Contact handling.
             # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
@@ -344,7 +344,7 @@ class BlackCfg(LeggedRobotCfg):
             # Action and actuator regularization.
             # 动作平滑、功率与关节加速度正则项。
             action_rate = -0.05
-            smoothness = -0.0101
+            smoothness = -0.01
             dof_acc = -2.5e-7
             joint_power = -2e-5
 
