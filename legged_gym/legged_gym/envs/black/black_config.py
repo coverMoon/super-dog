@@ -72,13 +72,13 @@ class BlackCfg(LeggedRobotCfg):
         name = "black"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base", "thigh"]
+        terminate_after_contacts_on = ["base"]
         privileged_contacts_on = ["base", "thigh", "calf"]
         self_collisions = 1 # 1=disable
 
     class commands:
         curriculum = True
-        max_curriculum = 2.0
+        max_curriculum = 3.0
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
@@ -103,7 +103,10 @@ class BlackCfg(LeggedRobotCfg):
         payload_mass_range = [-2.0, 4.0]
 
         randomize_com_displacement = True
-        com_displacement_range = [-0.05, 0.05]
+        # com_displacement_range = [-0.05, 0.05]
+        com_displacement_range_x = [-0.08, 0.08]
+        com_displacement_range_y = [-0.05, 0.05]
+        com_displacement_range_z = [-0.05, 0.05]
 
         randomize_link_mass = True
         link_mass_range = [0.75, 1.25]
@@ -130,7 +133,7 @@ class BlackCfg(LeggedRobotCfg):
         inertia_range = [0.5, 1.5]
 
         disturbance = True
-        disturbance_range = [-30.0, 30.0]
+        disturbance_range = [-35.0, 35.0]
         disturbance_interval = 8
         
         push_robots = True
@@ -174,8 +177,8 @@ class BlackCfg(LeggedRobotCfg):
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯下，楼梯上，乱石，梅花桩，沟壑，木板桥，高墙]
-        # 当前混合地形分支中剥离断桥，避免与下楼梯在盲策略上产生冲突。
-        terrain_proportions = [0.1, 0.1, 0.1, 0.25, 0.25, 0.2, 0.0, 0.0, 0.0, 0.0]
+        # 稳定性/抗扰动基线：移除台阶、高墙、沟壑和桥，仅保留平地、斜坡与乱石。
+        terrain_proportions = [0.2, 0.3, 0.3, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
@@ -280,25 +283,28 @@ class BlackCfg(LeggedRobotCfg):
             # 机身姿态、高度与整体稳定性约束。
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
-            orientation = -0.2
-            base_height = -1.0
+            orientation = -1.0
+            base_height = -5.0
             foot_clearance = -0.01
+
+            # Contact handling.
+            # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
+            collision = -0.05
 
             # Action and actuator regularization.
             # 动作平滑、功率与关节加速度正则项。
-            action_rate = -0.01
-            smoothness = -0.01
+            action_rate = -0.05
+            smoothness = -0.0105
             dof_acc = -2.5e-7
             joint_power = -2e-5
+            torques = -6.5e-4
 
             # Disabled legacy or experimental terms.
             # 当前关闭的历史项、严苛 sim2real shaping 或预留实验项。
             termination = -0.0
-            collision = -0.0
             feet_stumble = -0.0
             feet_air_time = 0.0
             stand_still = -0.0
-            torques = -0.0
             dof_vel = -0.0
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
@@ -328,7 +334,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.01
+        entropy_coef = 0.005
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-4 #5.e-4

@@ -863,7 +863,7 @@ class LeggedRobot(BaseTask):
         if self.cfg.domain_rand.randomize_payload_mass:
             self.payload = torch_rand_float(self.cfg.domain_rand.payload_mass_range[0], self.cfg.domain_rand.payload_mass_range[1], (self.num_envs, 1), device=self.device)
         if self.cfg.domain_rand.randomize_com_displacement:
-            self.com_displacement = torch_rand_float(self.cfg.domain_rand.com_displacement_range[0], self.cfg.domain_rand.com_displacement_range[1], (self.num_envs, 3), device=self.device)
+            self.com_displacement = self._sample_com_displacement()
             
         #store friction and restitution
         self.friction_coeffs = torch.ones(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1007,7 +1007,7 @@ class LeggedRobot(BaseTask):
         if self.cfg.domain_rand.randomize_payload_mass:
             self.payload = torch_rand_float(self.cfg.domain_rand.payload_mass_range[0], self.cfg.domain_rand.payload_mass_range[1], (self.num_envs, 1), device=self.device)
         if self.cfg.domain_rand.randomize_com_displacement:
-            self.com_displacement = torch_rand_float(self.cfg.domain_rand.com_displacement_range[0], self.cfg.domain_rand.com_displacement_range[1], (self.num_envs, 3), device=self.device)
+            self.com_displacement = self._sample_com_displacement()
             
         for i in range(self.num_envs):
             # create env instance
@@ -1071,6 +1071,22 @@ class LeggedRobot(BaseTask):
             self.env_origins[:, 0] = spacing * xx.flatten()[:self.num_envs]
             self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
             self.env_origins[:, 2] = 0.
+
+    def _sample_com_displacement(self):
+        cfg = self.cfg.domain_rand
+        fallback_range = cfg.com_displacement_range
+        axis_ranges = (
+            getattr(cfg, "com_displacement_range_x", fallback_range),
+            getattr(cfg, "com_displacement_range_y", fallback_range),
+            getattr(cfg, "com_displacement_range_z", fallback_range),
+        )
+        return torch.cat(
+            [
+                torch_rand_float(axis_range[0], axis_range[1], (self.num_envs, 1), device=self.device)
+                for axis_range in axis_ranges
+            ],
+            dim=1,
+        )
 
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt

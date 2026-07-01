@@ -504,7 +504,7 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
-            stairs_run_still = -0.8
+            stairs_run_still = -1.2
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
