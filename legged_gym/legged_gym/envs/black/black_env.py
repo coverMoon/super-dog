@@ -937,12 +937,23 @@ class BlackEnv(LeggedRobot):
         terrain_variability = self._get_terrain_variability()
         extra_clearance = self._get_clearance_margin(terrain_variability)
         clearance_cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
+        yaw_limit = max(
+            abs(self.command_ranges["ang_vel_yaw"][0]),
+            abs(self.command_ranges["ang_vel_yaw"][1]),
+            1e-6,
+        )
+        yaw_norm = torch.clamp(torch.abs(self.commands[:, 2]).unsqueeze(1) / yaw_limit, min=0.0, max=1.0)
+        yaw_extra_clearance = torch.clamp(
+            yaw_norm * self.cfg.rewards.yaw_clearance_gain,
+            min=0.0,
+            max=self.cfg.rewards.max_yaw_extra_clearance,
+        )
 
         # 5. 分阶段计算惩罚
         stance_tolerance = 0.02 + clearance_cfg.stance_gain * extra_clearance
         stance_penalty = torch.relu(feet_height - stance_tolerance)
 
-        swing_target = -sin_val * self.cfg.rewards.clearance_height_target
+        swing_target = -sin_val * (self.cfg.rewards.clearance_height_target + yaw_extra_clearance)
         swing_low_penalty = torch.relu(swing_target - feet_height)
         swing_high_penalty = torch.relu(feet_height - (swing_target + extra_clearance))
         swing_penalty = swing_low_penalty + clearance_cfg.swing_high_penalty_weight * swing_high_penalty

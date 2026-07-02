@@ -220,6 +220,8 @@ class BlackCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
         clearance_height_target = 0.1
+        yaw_clearance_gain = 0.05
+        max_yaw_extra_clearance = 0.05
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
@@ -282,7 +284,7 @@ class BlackCfg(LeggedRobotCfg):
             max_linear_offset_y = 0.08
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.12
+            max_yaw_offset = 0.16
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
             late_swing_start_latyaw = 0.0
@@ -316,7 +318,7 @@ class BlackCfg(LeggedRobotCfg):
             # Command tracking.
             # 指令跟踪奖励。
             tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.0
+            tracking_ang_vel = 1.5
 
             # Base posture and body stability.
             # 机身姿态、高度与整体稳定性约束。
@@ -325,7 +327,7 @@ class BlackCfg(LeggedRobotCfg):
             ang_vel_xy = -0.05
             orientation = -0.8
             base_height = -1.0
-            foot_clearance = -1.0
+            foot_clearance = -2.0
 
             # Gait shaping.
             feet_spacing = -0.08
