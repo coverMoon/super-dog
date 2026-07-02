@@ -311,8 +311,8 @@ class BlackWCfg(BlackCfg):
 
         orientation_terrain_adaptive = True
         orientation_terrain_variability_clip = 0.30
-        orientation_terrain_sigma = 0.0010
-        orientation_terrain_min_scale = 0.03
+        orientation_terrain_sigma = 0.0015
+        orientation_terrain_min_scale = 0.05
         orientation_terrain_max_scale = 1.0
 
         class hip_default:
@@ -504,7 +504,7 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
-            stairs_run_still = -0.8
+            stairs_run_still = -0.4
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
