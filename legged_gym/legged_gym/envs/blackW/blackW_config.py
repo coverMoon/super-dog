@@ -311,8 +311,8 @@ class BlackWCfg(BlackCfg):
 
         orientation_terrain_adaptive = True
         orientation_terrain_variability_clip = 0.30
-        orientation_terrain_sigma = 0.0015
-        orientation_terrain_min_scale = 0.05
+        orientation_terrain_sigma = 0.0010
+        orientation_terrain_min_scale = 0.03
         orientation_terrain_max_scale = 1.0
 
         class hip_default:
@@ -452,7 +452,7 @@ class BlackWCfg(BlackCfg):
             obstacle_height_threshold = 0.02
             min_progress_span = 0.03
             front_pair_weight = 0.9
-            rear_pair_weight = 2.3
+            rear_pair_weight = 2.5
 
         class stairs_rear_target_bonus:
             command_threshold = 0.2
@@ -504,7 +504,7 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
-            stairs_run_still = -0.4
+            stairs_run_still = -0.8
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -517,7 +517,7 @@ class BlackWCfg(BlackCfg):
             wheel_obstacle_unloaded_lift = -0.05
             wheel_obstacle_spin = -1.0
             stairs_multi_contact_progress = 1.0
-            stairs_pair_escape = 1.3
+            stairs_pair_escape = 1.4
             stairs_rear_target_bonus = 0.0
             stairs_rear_stuck_escape = 0.0
             wheel_lateral_clearance = 0.45
@@ -648,4 +648,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jul01_03-04-42_"
+        load_run = "Jul03_02-18-30_"

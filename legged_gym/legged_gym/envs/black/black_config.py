@@ -103,6 +103,16 @@ class BlackCfg(LeggedRobotCfg):
             lin_vel_y = 0.0
             ang_vel_yaw = 0.0
 
+        class stop_probe:
+            enabled = True
+            env_fraction = 0.05
+            per_terrain_type = True
+            cycle_time = 6.0
+            move_time = 3.0
+            lin_vel_x = 0.8
+            lin_vel_y = 0.0
+            ang_vel_yaw = 0.0
+
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -331,7 +341,7 @@ class BlackCfg(LeggedRobotCfg):
 
             # Gait shaping.
             feet_spacing = -0.08
-            raibert = 0.8
+            raibert = 1.0
 
             # Contact handling.
             # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
@@ -349,6 +359,7 @@ class BlackCfg(LeggedRobotCfg):
             smoothness = -0.01
             dof_acc = -2.5e-7
             joint_power = -2e-5
+            foot_impact_vel = -0.8
 
             # Disabled legacy or experimental terms.
             # 当前关闭的历史项、严苛 sim2real shaping 或预留实验项。
@@ -363,7 +374,6 @@ class BlackCfg(LeggedRobotCfg):
             trot = 0.0
             all_joint_pos = 0.0
             foot_slip = 0.0
-            foot_impact_vel = 0.0
             progress = 0.0
 
 class BlackCfgPPO(LeggedRobotCfgPPO):

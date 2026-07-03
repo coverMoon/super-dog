@@ -184,6 +184,59 @@ class BlackEnv(LeggedRobot):
             return env_ids[:0]
         return env_ids[(env_ids >= probe_start) & (env_ids < probe_end)]
 
+    def _get_enabled_command_probe_fraction(self, name):
+        cfg = getattr(self.cfg.commands, name, None)
+        if cfg is None or not getattr(cfg, "enabled", False):
+            return 0.0
+        return max(0.0, min(float(getattr(cfg, "env_fraction", 0.0)), 1.0))
+
+    def _post_physics_step_callback(self):
+        super()._post_physics_step_callback()
+        self._apply_stop_probe_commands()
+
+    def _apply_stop_probe_commands(self):
+        stop_cfg = getattr(self.cfg.commands, "stop_probe", None)
+        if stop_cfg is None or not getattr(stop_cfg, "enabled", False):
+            return
+
+        stop_fraction = max(0.0, min(float(getattr(stop_cfg, "env_fraction", 0.0)), 1.0))
+        if stop_fraction <= 0.0:
+            return
+
+        start_fraction = 0.0
+        if getattr(stop_cfg, "per_terrain_type", True):
+            start_fraction += self._get_enabled_command_probe_fraction("terrain_probe")
+            start_fraction += self._get_enabled_command_probe_fraction("stand_probe")
+
+        all_env_ids = torch.arange(self.num_envs, device=self.device)
+        stop_env_ids = self._get_command_probe_env_ids(
+            all_env_ids,
+            stop_fraction,
+            start_fraction=start_fraction,
+            per_terrain_type=getattr(stop_cfg, "per_terrain_type", True),
+        )
+        if len(stop_env_ids) == 0:
+            return
+
+        cycle_time = max(float(getattr(stop_cfg, "cycle_time", 6.0)), self.dt)
+        move_time = max(0.0, min(float(getattr(stop_cfg, "move_time", cycle_time * 0.5)), cycle_time))
+        phase_time = torch.remainder(self.episode_length_buf[stop_env_ids].float() * self.dt, cycle_time)
+        move_mask = phase_time < move_time
+
+        x_cmd = float(getattr(stop_cfg, "lin_vel_x", 0.8))
+        y_cmd = float(getattr(stop_cfg, "lin_vel_y", 0.0))
+        yaw_cmd = float(getattr(stop_cfg, "ang_vel_yaw", 0.0))
+        x_cmd = max(self.command_ranges["lin_vel_x"][0], min(x_cmd, self.command_ranges["lin_vel_x"][1]))
+        y_cmd = max(self.command_ranges["lin_vel_y"][0], min(y_cmd, self.command_ranges["lin_vel_y"][1]))
+        yaw_cmd = max(self.command_ranges["ang_vel_yaw"][0], min(yaw_cmd, self.command_ranges["ang_vel_yaw"][1]))
+
+        zero_cmd = self.commands.new_zeros(move_mask.shape)
+        self.commands[stop_env_ids, 0] = torch.where(move_mask, self.commands.new_full(move_mask.shape, x_cmd), zero_cmd)
+        self.commands[stop_env_ids, 1] = torch.where(move_mask, self.commands.new_full(move_mask.shape, y_cmd), zero_cmd)
+        self.commands[stop_env_ids, 2] = torch.where(move_mask, self.commands.new_full(move_mask.shape, yaw_cmd), zero_cmd)
+        if self.cfg.commands.heading_command:
+            self.commands[stop_env_ids, 3] = 0.0
+
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
 
