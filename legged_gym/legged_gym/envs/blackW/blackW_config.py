@@ -125,7 +125,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.05, 0.05, 0.6, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.3, 0.1, 0.1, 0.0, 0.0, 0.0, 0.2]
         high_wall_fill_full_block = True
         high_wall_spawn_clearance = 0.8
         slope_treshold = 0.75
@@ -195,7 +195,7 @@ class BlackWCfg(BlackCfg):
         motor_strength_range = [0.9, 1.1]
 
         randomize_hip_motor_strength = True
-        hip_motor_strength_range = [0.75, 1.05]
+        hip_motor_strength_range = [0.8, 1.05]
 
         randomize_hip_damping = True
         hip_damping_scale_range = [0.8, 1.5]
@@ -204,8 +204,8 @@ class BlackWCfg(BlackCfg):
         # B2 sim2real approximation for calf linkage/gear play. The play mode
         # keeps the effective target inside a backlash window and weakens Kp in free play.
         calf_backlash_mode = "play"
-        calf_backlash_range = [0.01, 0.055]
-        calf_backlash_min_kp_scale = 0.08
+        calf_backlash_range = [0.005, 0.035]
+        calf_backlash_min_kp_scale = 0.12
         calf_backlash_engage_start = 0.6
         calf_backlash_leak = 0.02
 
@@ -299,9 +299,8 @@ class BlackWCfg(BlackCfg):
         stand_still_cmd_threshold = 0.1
         stand_still_yaw_threshold = 0.1
         run_still_x_threshold = 0.1 # 大于时触发
-        # Legacy names kept for config compatibility; run_still now decays with y/yaw command magnitude.
-        run_still_y_threshold = 0.1
-        run_still_yaw_threshold = 0.15
+        run_still_y_threshold = 0.1 # 小于时触发
+        run_still_yaw_threshold = 0.15 # 小于时触发
 
         termination_contact_force_threshold = 1.0
         collision_force_threshold = 0.1
@@ -309,26 +308,17 @@ class BlackWCfg(BlackCfg):
         foot_impact_contact_force = 1.0
         foot_impact_vel_threshold = 0.2
 
+        hip_default_cmd_min_scale = 0.5
+        hip_default_y_ref = 0.5
+        hip_default_yaw_ref = 1.0
+        hip_default_y_scale = 0.35
+        hip_default_yaw_scale = 0.35
+
         orientation_terrain_adaptive = True
         orientation_terrain_variability_clip = 0.30
-        orientation_terrain_sigma = 0.0010
-        orientation_terrain_min_scale = 0.03
+        orientation_terrain_sigma = 0.0015
+        orientation_terrain_min_scale = 0.05
         orientation_terrain_max_scale = 1.0
-
-        class hip_default:
-            cmd_min_scale = 0.5
-            y_ref = 0.5
-            yaw_ref = 1.0
-            y_scale = 0.35
-            yaw_scale = 0.35
-
-        class run_still:
-            use_command_decay = False
-            cmd_min_scale = 0.5
-            y_ref = 0.5
-            yaw_ref = 1.0
-            y_scale = 0.35
-            yaw_scale = 0.35
 
         class terrain_adaptive:
             enabled = False
@@ -396,11 +386,11 @@ class BlackWCfg(BlackCfg):
 
         class wheel_obstacle_lift:
             # Keep high-wall behavior configurable while allowing stairs to use the simpler Jun06-style lift target.
-            stairs_use_simple_lift = False
-            horizontal_force_threshold = 15.0
+            stairs_use_simple_lift = True
+            horizontal_force_threshold = 5.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
-            clearance_margin = 0.065
+            clearance_margin = 0.05
             high_obstacle_height_threshold = 0.18
             high_obstacle_clearance_margin = 0.03
             high_obstacle_active_height_span = 0.18
@@ -408,21 +398,13 @@ class BlackWCfg(BlackCfg):
             min_lift_height = 0.05
             min_progress_span = 0.03
             active_time = 0.8
-            progress_weight = 0.55
+            progress_weight = 0.7
             target_sigma = 0.05
-            over_lift_margin = 0.035
+            over_lift_margin = 0.03
             over_lift_sigma = 0.04
-            over_lift_penalty_weight = 0.12
-            rear_lift_target_offset = 0.02
-            rear_lift_target_offset_terrain_types = [3]
+            over_lift_penalty_weight = 0.1
             unloaded_lift_suppress_height = 0.05
             unloaded_lift_suppress_sigma = 0.05
-            multi_wheel_coordination = True
-            multi_wheel_coordination_terrain_types = [3]
-            multi_wheel_pair_residual = 0.2
-            multi_wheel_diagonal_residual = 0.2
-            multi_wheel_high_wall_pair_residual = 0.4
-            multi_wheel_high_wall_diagonal_residual = 0.4
             forward_offsets = [0.04, 0.08, 0.12, 0.16]
             lateral_offsets = [-0.03, 0.0, 0.03]
 
@@ -430,7 +412,7 @@ class BlackWCfg(BlackCfg):
             # When enabled, stairs type 3 use the older Jun06 hard-threshold anti-spin logic; other terrains keep continuous slip.
             stairs_use_threshold_spin = False
             terrain_types = [3, 4, 9]
-            horizontal_force_threshold = 15.0
+            horizontal_force_threshold = 5.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.02
             slip_speed_sigma = 0.25
@@ -438,38 +420,6 @@ class BlackWCfg(BlackCfg):
             stairs_continuous_scale = 1.5
             spin_threshold = 8.0
             progress_threshold = 0.25
-
-        class stairs_multi_contact_progress:
-            command_threshold = 0.2
-            horizontal_force_threshold = 15.0
-            obstacle_height_threshold = 0.02
-            min_contact_count = 2
-            min_command_speed = 0.2
-
-        class stairs_pair_escape:
-            command_threshold = 0.2
-            horizontal_force_threshold = 15.0
-            obstacle_height_threshold = 0.02
-            min_progress_span = 0.03
-            front_pair_weight = 0.9
-            rear_pair_weight = 2.5
-
-        class stairs_rear_target_bonus:
-            command_threshold = 0.2
-            horizontal_force_threshold = 15.0
-            obstacle_height_threshold = 0.02
-            min_progress_span = 0.03
-            high_progress_threshold = 0.7
-
-        class stairs_rear_stuck_escape:
-            command_threshold = 0.2
-            horizontal_force_threshold = 15.0
-            obstacle_height_threshold = 0.02
-            min_command_speed = 0.2
-            progress_ratio_threshold = 0.4
-            slip_speed_threshold = 0.2
-            min_progress_span = 0.03
-            high_progress_threshold = 0.5
 
         class wheel_lateral_clearance:
             command_threshold = 0.18
@@ -495,7 +445,7 @@ class BlackWCfg(BlackCfg):
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
             orientation = -3.0
-            roll_orientation = 0.0
+            roll_orientation = -0.0
             base_height = -5.0
             dof_pos_limits = -0.2
 
@@ -504,7 +454,6 @@ class BlackWCfg(BlackCfg):
             hip_default = -0.35
             stand_still = -0.6
             run_still = -1.0
-            stairs_run_still = -0.8
             stand_wheel_action = -0.2
             stand_wheel_vel = -0.02
 
@@ -515,16 +464,12 @@ class BlackWCfg(BlackCfg):
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 2.0
             wheel_obstacle_unloaded_lift = -0.05
-            wheel_obstacle_spin = -1.0
-            stairs_multi_contact_progress = 1.0
-            stairs_pair_escape = 1.4
-            stairs_rear_target_bonus = 0.0
-            stairs_rear_stuck_escape = 0.0
+            wheel_obstacle_spin = -1.2
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
             # 动作平滑、力矩与关节速度正则项。
-            action_rate = -0.067
+            action_rate = -0.06
             smoothness = -0.01
             torques = -6.2e-4
             dof_vel = -1e-7
@@ -648,4 +593,4 @@ class BlackWCfgPPO(BlackCfgPPO):
         checkpoint = -1
         resume_path = None
         resume = True
-        load_run = "Jul03_02-18-30_"
+        load_run = "Jun26_12-30-56_"

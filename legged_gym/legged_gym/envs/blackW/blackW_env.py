@@ -246,9 +246,6 @@ class BlackWEnv(BlackEnv):
         if len(self.wheel_body_indices) != 4:
             raise RuntimeError(f"Expected 4 wheel bodies, got {len(self.wheel_body_indices)} from {self.body_names}")
 
-        self.wheel_body_leg_indices = self._resolve_leg_order_indices(wheel_body_names, "wheel body")
-        self.wheel_dof_leg_indices = self._resolve_leg_order_indices(wheel_names, "wheel dof")
-
         print("### blackW dof names:", self.dof_names)
         print("### blackW wheel indices:", self.wheel_indices.detach().cpu().tolist())
         print("### blackW wheel body indices:", self.wheel_body_indices.detach().cpu().tolist())
@@ -310,23 +307,6 @@ class BlackWEnv(BlackEnv):
                 damping_scale = np.random.uniform(damping_range[0], damping_range[1], size=len(hip_dof_ids))
                 props["damping"][hip_dof_ids] *= damping_scale
         return props
-
-    def _resolve_leg_order_indices(self, names, label):
-        leg_to_idx = {}
-        for idx, name in enumerate(names):
-            for leg in ("FL", "FR", "RL", "RR"):
-                if name == leg or name.startswith(f"{leg}_") or f"_{leg}_" in name:
-                    leg_to_idx[leg] = idx
-                    break
-        missing = [leg for leg in ("FL", "FR", "RL", "RR") if leg not in leg_to_idx]
-        if missing:
-            raise RuntimeError(f"Could not resolve {label} leg order for {missing} from {names}")
-        return torch.tensor(
-            [leg_to_idx["FL"], leg_to_idx["FR"], leg_to_idx["RL"], leg_to_idx["RR"]],
-            dtype=torch.long,
-            device=self.device,
-            requires_grad=False,
-        )
 
     def _resolve_wheel_forward_sign(self, wheel_names):
         cfg_sign = self.cfg.control.wheel_forward_sign
@@ -912,25 +892,19 @@ class BlackWEnv(BlackEnv):
         yaw_stand = torch.abs(self.commands[:, 2]) < self.cfg.rewards.stand_still_yaw_threshold
         return lin_stand & yaw_stand
 
-    def _get_posture_command_scale(self, cfg_name):
-        cfg = getattr(self.cfg.rewards, cfg_name, None)
-        y_ref = max(getattr(cfg, "y_ref", getattr(self.cfg.rewards, "hip_default_y_ref", 0.5)), 1e-6)
-        yaw_ref = max(getattr(cfg, "yaw_ref", getattr(self.cfg.rewards, "hip_default_yaw_ref", 1.0)), 1e-6)
-        y_scale = getattr(cfg, "y_scale", getattr(self.cfg.rewards, "hip_default_y_scale", 0.35))
-        yaw_scale = getattr(cfg, "yaw_scale", getattr(self.cfg.rewards, "hip_default_yaw_scale", 0.35))
-        min_scale = getattr(cfg, "cmd_min_scale", getattr(self.cfg.rewards, "hip_default_cmd_min_scale", 0.5))
-        y_cmd = torch.clamp(torch.abs(self.commands[:, 1]) / y_ref, max=1.0)
-        yaw_cmd = torch.clamp(torch.abs(self.commands[:, 2]) / yaw_ref, max=1.0)
-        scale = 1.0 - y_scale * y_cmd
-        scale = scale - yaw_scale * yaw_cmd
-        return torch.clamp(scale, min=min_scale, max=1.0)
-
     def _reward_hip_default(self):
         hip_error = torch.sum(
             torch.abs(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]),
             dim=1,
         )
-        return hip_error * self._get_posture_command_scale("hip_default")
+        y_ref = max(self.cfg.rewards.hip_default_y_ref, 1e-6)
+        yaw_ref = max(self.cfg.rewards.hip_default_yaw_ref, 1e-6)
+        y_cmd = torch.clamp(torch.abs(self.commands[:, 1]) / y_ref, max=1.0)
+        yaw_cmd = torch.clamp(torch.abs(self.commands[:, 2]) / yaw_ref, max=1.0)
+        scale = 1.0 - self.cfg.rewards.hip_default_y_scale * y_cmd
+        scale = scale - self.cfg.rewards.hip_default_yaw_scale * yaw_cmd
+        scale = torch.clamp(scale, min=self.cfg.rewards.hip_default_cmd_min_scale, max=1.0)
+        return hip_error * scale
 
     def _reward_stand_still(self):
         dof_err = self.dof_pos - self.default_dof_pos
@@ -1061,17 +1035,6 @@ class BlackWEnv(BlackEnv):
             low_obstacle_target,
         )
         target_by_height = torch.where(stairs_simple_lift, low_obstacle_target, target_by_height)
-        rear_lift_target_offset = float(getattr(cfg, "rear_lift_target_offset", 0.0))
-        if rear_lift_target_offset > 0.0 and hasattr(self, "wheel_body_leg_indices"):
-            rear_offset_gate = torch.zeros_like(target_by_height, dtype=torch.bool)
-            rear_offset_gate[:, self.wheel_body_leg_indices[2:4]] = True
-            rear_offset_terrain_types = getattr(cfg, "rear_lift_target_offset_terrain_types", [])
-            if len(rear_offset_terrain_types) > 0:
-                rear_offset_terrain_gate = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-                for terrain_type in rear_offset_terrain_types:
-                    rear_offset_terrain_gate = rear_offset_terrain_gate | (terrain_type_ids == int(terrain_type))
-                rear_offset_gate = rear_offset_gate & rear_offset_terrain_gate.unsqueeze(1)
-            target_by_height = target_by_height + rear_lift_target_offset * rear_offset_gate.float()
         new_target = torch.maximum(
             target_by_height,
             new_start + cfg.min_lift_height,
@@ -1137,74 +1100,8 @@ class BlackWEnv(BlackEnv):
             torch.full_like(self.wheel_obstacle_lift_timer[:, 0], down_stairs_lift_scale),
             torch.ones_like(self.wheel_obstacle_lift_timer[:, 0]),
         ).unsqueeze(1)
-        reward_per_wheel = lift_reward * active.float() * command_gate.float() * terrain_scale
-        reward_active = active & command_gate & (terrain_scale > 0.0)
-        return self._aggregate_wheel_obstacle_lift_reward(reward_per_wheel, reward_active, terrain_type_ids)
+        return torch.sum(lift_reward * active.float() * command_gate.float() * terrain_scale, dim=1)
 
-    def _aggregate_wheel_obstacle_lift_reward(self, reward_per_wheel, reward_active, terrain_type_ids):
-        cfg = self.cfg.rewards.wheel_obstacle_lift
-        if not getattr(cfg, "multi_wheel_coordination", False):
-            return torch.sum(reward_per_wheel, dim=1)
-        if not hasattr(self, "wheel_body_leg_indices"):
-            return torch.sum(reward_per_wheel, dim=1)
-
-        terrain_types = getattr(cfg, "multi_wheel_coordination_terrain_types", [])
-        if len(terrain_types) == 0:
-            coordination_gate = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
-        else:
-            coordination_gate = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-            for terrain_type in terrain_types:
-                coordination_gate = coordination_gate | (terrain_type_ids == int(terrain_type))
-
-        ordered_reward = reward_per_wheel[:, self.wheel_body_leg_indices]
-        ordered_active = reward_active[:, self.wheel_body_leg_indices]
-        fl, fr, rl, rr = 0, 1, 2, 3
-
-        pair_residual = float(getattr(cfg, "multi_wheel_pair_residual", 0.0))
-        diagonal_residual = float(getattr(cfg, "multi_wheel_diagonal_residual", pair_residual))
-        high_wall_pair_residual = float(getattr(cfg, "multi_wheel_high_wall_pair_residual", pair_residual))
-        high_wall_diagonal_residual = float(getattr(cfg, "multi_wheel_high_wall_diagonal_residual", diagonal_residual))
-        pair_residual = max(0.0, min(pair_residual, 1.0))
-        diagonal_residual = max(0.0, min(diagonal_residual, 1.0))
-        high_wall_pair_residual = max(0.0, min(high_wall_pair_residual, 1.0))
-        high_wall_diagonal_residual = max(0.0, min(high_wall_diagonal_residual, 1.0))
-
-        high_wall_envs = terrain_type_ids == 9
-        pair_residual_tensor = torch.where(
-            high_wall_envs,
-            torch.full_like(ordered_reward[:, 0], high_wall_pair_residual),
-            torch.full_like(ordered_reward[:, 0], pair_residual),
-        )
-        diagonal_residual_tensor = torch.where(
-            high_wall_envs,
-            torch.full_like(ordered_reward[:, 0], high_wall_diagonal_residual),
-            torch.full_like(ordered_reward[:, 0], diagonal_residual),
-        )
-
-        def reduce_pair(idx_a, idx_b):
-            reward_a = ordered_reward[:, idx_a]
-            reward_b = ordered_reward[:, idx_b]
-            pair_sum = reward_a + reward_b
-            pair_max = torch.maximum(reward_a, reward_b)
-            pair_min = torch.minimum(reward_a, reward_b)
-            pair_reduced = pair_max + pair_residual_tensor * pair_min
-            both_active = ordered_active[:, idx_a] & ordered_active[:, idx_b]
-            return torch.where(both_active, pair_reduced, pair_sum)
-
-        front_reward = reduce_pair(fl, fr)
-        rear_reward = reduce_pair(rl, rr)
-        pair_reward = front_reward + rear_reward
-
-        diagonal_a = ordered_reward[:, fl] + ordered_reward[:, rr]
-        diagonal_b = ordered_reward[:, fr] + ordered_reward[:, rl]
-        diagonal_max = torch.maximum(diagonal_a, diagonal_b)
-        diagonal_min = torch.minimum(diagonal_a, diagonal_b)
-        diagonal_reward = diagonal_max + diagonal_residual_tensor * diagonal_min
-        all_active = ordered_active[:, fl] & ordered_active[:, fr] & ordered_active[:, rl] & ordered_active[:, rr]
-        coordinated_reward = torch.where(all_active, diagonal_reward, pair_reward)
-
-        base_reward = torch.sum(reward_per_wheel, dim=1)
-        return torch.where(coordination_gate, coordinated_reward, base_reward)
 
     def _reward_wheel_obstacle_unloaded_lift(self):
         cfg = self.cfg.rewards.wheel_obstacle_lift
@@ -1283,177 +1180,6 @@ class BlackWEnv(BlackEnv):
 
         return torch.sum(continuous_penalty, dim=1)
 
-    def _reward_stairs_multi_contact_progress(self):
-        cfg = self.cfg.rewards.stairs_multi_contact_progress
-        terrain_type_ids = self._get_terrain_type_ids()
-        stairs_gate = terrain_type_ids == 3
-
-        command_x = torch.clamp(self.commands[:, 0], min=0.0)
-        command_gate = command_x > cfg.command_threshold
-
-        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
-        wheel_pos = wheel_states[:, :, :3]
-        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
-        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
-        contact_gate = horizontal_force > cfg.horizontal_force_threshold
-
-        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
-        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
-        obstacle_rel_height = obstacle_height - ground_height
-        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
-        obstacle_contacts = contact_gate & obstacle_gate
-        contact_count = torch.sum(obstacle_contacts.int(), dim=1)
-        multi_contact_gate = contact_count >= int(cfg.min_contact_count)
-
-        forward_speed = torch.clamp(self.base_lin_vel[:, 0], min=0.0)
-        command_denom = torch.clamp(command_x, min=cfg.min_command_speed)
-        progress_reward = torch.clamp(forward_speed / command_denom, min=0.0, max=1.0)
-
-        return progress_reward * stairs_gate.float() * command_gate.float() * multi_contact_gate.float()
-
-    def _reward_stairs_pair_escape(self):
-        cfg = self.cfg.rewards.stairs_pair_escape
-        if not hasattr(self, "wheel_body_leg_indices"):
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
-
-        terrain_type_ids = self._get_terrain_type_ids()
-        stairs_gate = terrain_type_ids == 3
-
-        command_x = torch.clamp(self.commands[:, 0], min=0.0)
-        command_gate = command_x > cfg.command_threshold
-
-        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
-        wheel_pos = wheel_states[:, :, :3]
-        wheel_z = wheel_states[:, :, 2]
-        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
-        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
-        contact_gate = horizontal_force > cfg.horizontal_force_threshold
-
-        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
-        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
-        obstacle_rel_height = obstacle_height - ground_height
-        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
-
-        ordered_contacts = (contact_gate & obstacle_gate)[:, self.wheel_body_leg_indices]
-        ordered_active = (self.wheel_obstacle_lift_timer > 0.0)[:, self.wheel_body_leg_indices]
-        ordered_wheel_z = wheel_z[:, self.wheel_body_leg_indices]
-        ordered_start_z = self.wheel_obstacle_lift_start_z[:, self.wheel_body_leg_indices]
-        ordered_target_z = self.wheel_obstacle_lift_target_z[:, self.wheel_body_leg_indices]
-
-        lift_span = torch.clamp(ordered_target_z - ordered_start_z, min=cfg.min_progress_span)
-        lift_progress = torch.clamp((ordered_wheel_z - ordered_start_z) / lift_span, min=0.0, max=1.0)
-
-        fl, fr, rl, rr = 0, 1, 2, 3
-        pair_ready = ordered_contacts & ordered_active
-        front_pair_gate = pair_ready[:, fl] & pair_ready[:, fr]
-        rear_pair_gate = pair_ready[:, rl] & pair_ready[:, rr]
-        front_escape = torch.maximum(lift_progress[:, fl], lift_progress[:, fr])
-        rear_escape = torch.maximum(lift_progress[:, rl], lift_progress[:, rr])
-
-        reward = (
-            float(cfg.front_pair_weight) * front_escape * front_pair_gate.float()
-            + float(cfg.rear_pair_weight) * rear_escape * rear_pair_gate.float()
-        )
-        return reward * stairs_gate.float() * command_gate.float()
-
-    def _reward_stairs_rear_target_bonus(self):
-        cfg = self.cfg.rewards.stairs_rear_target_bonus
-        if not hasattr(self, "wheel_body_leg_indices"):
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
-
-        terrain_type_ids = self._get_terrain_type_ids()
-        stairs_gate = terrain_type_ids == 3
-
-        command_x = torch.clamp(self.commands[:, 0], min=0.0)
-        command_gate = command_x > cfg.command_threshold
-
-        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
-        wheel_pos = wheel_states[:, :, :3]
-        wheel_z = wheel_states[:, :, 2]
-        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
-        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
-        contact_gate = horizontal_force > cfg.horizontal_force_threshold
-
-        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
-        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
-        obstacle_rel_height = obstacle_height - ground_height
-        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
-
-        ordered_contacts = (contact_gate & obstacle_gate)[:, self.wheel_body_leg_indices]
-        ordered_active = (self.wheel_obstacle_lift_timer > 0.0)[:, self.wheel_body_leg_indices]
-        ordered_wheel_z = wheel_z[:, self.wheel_body_leg_indices]
-        ordered_start_z = self.wheel_obstacle_lift_start_z[:, self.wheel_body_leg_indices]
-        ordered_target_z = self.wheel_obstacle_lift_target_z[:, self.wheel_body_leg_indices]
-
-        lift_span = torch.clamp(ordered_target_z - ordered_start_z, min=cfg.min_progress_span)
-        lift_progress = torch.clamp((ordered_wheel_z - ordered_start_z) / lift_span, min=0.0, max=1.0)
-        threshold = float(cfg.high_progress_threshold)
-        high_progress = torch.clamp((lift_progress - threshold) / max(1.0 - threshold, 1e-6), min=0.0, max=1.0)
-
-        rl, rr = 2, 3
-        rear_ready = ordered_contacts & ordered_active
-        rear_bonus = torch.maximum(
-            high_progress[:, rl] * rear_ready[:, rl].float(),
-            high_progress[:, rr] * rear_ready[:, rr].float(),
-        )
-        return rear_bonus * stairs_gate.float() * command_gate.float()
-
-    def _reward_stairs_rear_stuck_escape(self):
-        cfg = self.cfg.rewards.stairs_rear_stuck_escape
-        if not hasattr(self, "wheel_body_leg_indices") or not hasattr(self, "wheel_dof_leg_indices"):
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
-
-        terrain_type_ids = self._get_terrain_type_ids()
-        stairs_gate = terrain_type_ids == 3
-
-        command_x = torch.clamp(self.commands[:, 0], min=0.0)
-        command_gate = command_x > cfg.command_threshold
-        command_denom = torch.clamp(command_x, min=cfg.min_command_speed)
-        forward_speed = torch.clamp(self.base_lin_vel[:, 0], min=0.0)
-        progress_ratio = torch.clamp(forward_speed / command_denom, min=0.0, max=1.0)
-        low_progress_gate = progress_ratio < cfg.progress_ratio_threshold
-
-        wheel_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.wheel_body_indices, :]
-        wheel_pos = wheel_states[:, :, :3]
-        wheel_z = wheel_states[:, :, 2]
-        wheel_contact_forces = self.contact_forces[:, self.wheel_body_indices, :]
-        horizontal_force = torch.norm(wheel_contact_forces[:, :, :2], dim=2)
-        contact_gate = horizontal_force > cfg.horizontal_force_threshold
-
-        obstacle_height = self._sample_wheel_front_obstacle_heights(wheel_pos)
-        ground_height = self._sample_terrain_heights_at_points(wheel_pos[:, :, :2], reduce="min")
-        obstacle_rel_height = obstacle_height - ground_height
-        obstacle_gate = obstacle_rel_height > cfg.obstacle_height_threshold
-
-        ordered_contacts = (contact_gate & obstacle_gate)[:, self.wheel_body_leg_indices]
-        ordered_active = (self.wheel_obstacle_lift_timer > 0.0)[:, self.wheel_body_leg_indices]
-        ordered_wheel_z = wheel_z[:, self.wheel_body_leg_indices]
-        ordered_start_z = self.wheel_obstacle_lift_start_z[:, self.wheel_body_leg_indices]
-        ordered_target_z = self.wheel_obstacle_lift_target_z[:, self.wheel_body_leg_indices]
-
-        wheel_surface_speed = torch.abs(self.dof_vel[:, self.wheel_indices]) * self.cfg.control.wheel_radius
-        ordered_surface_speed = wheel_surface_speed[:, self.wheel_dof_leg_indices]
-        ordered_slip_speed = torch.clamp(ordered_surface_speed - forward_speed.unsqueeze(1), min=0.0)
-
-        lift_span = torch.clamp(ordered_target_z - ordered_start_z, min=cfg.min_progress_span)
-        lift_progress = torch.clamp((ordered_wheel_z - ordered_start_z) / lift_span, min=0.0, max=1.0)
-        threshold = float(cfg.high_progress_threshold)
-        rear_progress = torch.clamp((lift_progress - threshold) / max(1.0 - threshold, 1e-6), min=0.0, max=1.0)
-
-        rl, rr = 2, 3
-        rear_ready = ordered_contacts & ordered_active
-        rear_contact_gate = rear_ready[:, rl] | rear_ready[:, rr]
-        rear_slip_gate = (
-            (ordered_slip_speed[:, rl] > cfg.slip_speed_threshold)
-            | (ordered_slip_speed[:, rr] > cfg.slip_speed_threshold)
-        )
-        stuck_gate = rear_contact_gate & rear_slip_gate & low_progress_gate
-        rear_escape = torch.maximum(
-            rear_progress[:, rl] * rear_ready[:, rl].float(),
-            rear_progress[:, rr] * rear_ready[:, rr].float(),
-        )
-        return rear_escape * stairs_gate.float() * command_gate.float() * stuck_gate.float()
-
     def _sample_wheel_front_obstacle_heights(self, wheel_pos):
         local_offsets = self.wheel_obstacle_lift_local_offsets.expand(self.num_envs, -1, -1, -1)
         flat_offsets = local_offsets.reshape(self.num_envs, -1, 3)
@@ -1501,19 +1227,6 @@ class BlackWEnv(BlackEnv):
         dof_err = dof_err.clone()
         dof_err[:, self.wheel_indices] = 0.0
         x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
-        if getattr(self.cfg.rewards.run_still, "use_command_decay", False):
-            command_scale = self._get_posture_command_scale("run_still")
-            return torch.sum(torch.abs(dof_err), dim=1) * x_run.float() * command_scale
-        y_still = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
-        yaw_still = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
-        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_still & yaw_still).float()
-
-    def _reward_stairs_run_still(self):
-        dof_err = self.dof_pos - self.default_dof_pos
-        dof_err = dof_err.clone()
-        dof_err[:, self.wheel_indices] = 0.0
-        x_run = torch.abs(self.commands[:, 0]) > self.cfg.rewards.run_still_x_threshold
-        y_still = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
-        yaw_still = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
-        stairs_gate = self._get_terrain_type_ids() == 3
-        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_still & yaw_still & stairs_gate).float()
+        y_small = torch.abs(self.commands[:, 1]) < self.cfg.rewards.run_still_y_threshold
+        yaw_small = torch.abs(self.commands[:, 2]) < self.cfg.rewards.run_still_yaw_threshold
+        return torch.sum(torch.abs(dof_err), dim=1) * (x_run & y_small & yaw_small).float()
