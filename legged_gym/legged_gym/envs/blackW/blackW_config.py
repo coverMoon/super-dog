@@ -125,7 +125,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.1, 0.3, 0.1, 0.1, 0.0, 0.0, 0.0, 0.2]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.4]
         high_wall_fill_full_block = True
         high_wall_spawn_clearance = 0.8
         slope_treshold = 0.75
@@ -387,7 +387,7 @@ class BlackWCfg(BlackCfg):
         class wheel_obstacle_lift:
             # Keep high-wall behavior configurable while allowing stairs to use the simpler Jun06-style lift target.
             stairs_use_simple_lift = True
-            horizontal_force_threshold = 5.0
+            horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.025
             clearance_margin = 0.05
@@ -412,7 +412,7 @@ class BlackWCfg(BlackCfg):
             # When enabled, stairs type 3 use the older Jun06 hard-threshold anti-spin logic; other terrains keep continuous slip.
             stairs_use_threshold_spin = False
             terrain_types = [3, 4, 9]
-            horizontal_force_threshold = 5.0
+            horizontal_force_threshold = 15.0
             command_threshold = 0.2
             obstacle_height_threshold = 0.02
             slip_speed_sigma = 0.25
@@ -464,7 +464,7 @@ class BlackWCfg(BlackCfg):
             foot_impact_vel = -0.02
             wheel_obstacle_lift = 2.0
             wheel_obstacle_unloaded_lift = -0.05
-            wheel_obstacle_spin = -1.2
+            wheel_obstacle_spin = -1.0
             wheel_lateral_clearance = 0.45
 
             # Action and actuator regularization.
@@ -590,7 +590,7 @@ class BlackWCfgPPO(BlackCfgPPO):
         max_iterations = 1000  
         experiment_name = "rough_blackW_dog"
         run_name = ""
-        checkpoint = -1
-        resume_path = None
         resume = True
         load_run = "Jun26_12-30-56_"
+        checkpoint = -1
+        resume_path = None

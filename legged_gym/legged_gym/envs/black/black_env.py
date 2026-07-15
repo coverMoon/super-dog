@@ -110,133 +110,6 @@ class BlackEnv(LeggedRobot):
         )
         return feet_pos_body, feet_vel_body
 
-    def _resample_commands(self, env_ids):
-        super()._resample_commands(env_ids)
-
-        probe_cfg = getattr(self.cfg.commands, "terrain_probe", None)
-        if len(env_ids) == 0:
-            return
-
-        terrain_probe_fraction = 0.0
-        if probe_cfg is not None and getattr(probe_cfg, "enabled", False):
-            terrain_probe_fraction = max(0.0, min(float(getattr(probe_cfg, "env_fraction", 0.0)), 1.0))
-            probe_env_ids = self._get_command_probe_env_ids(
-                env_ids,
-                terrain_probe_fraction,
-                per_terrain_type=getattr(probe_cfg, "per_terrain_type", True),
-            )
-            if len(probe_env_ids) > 0:
-                x_cmd = float(getattr(probe_cfg, "lin_vel_x", 0.8))
-                x_cmd = max(self.command_ranges["lin_vel_x"][0], min(x_cmd, self.command_ranges["lin_vel_x"][1]))
-                self.commands[probe_env_ids, 0] = x_cmd
-                self.commands[probe_env_ids, 1] = float(getattr(probe_cfg, "lin_vel_y", 0.0))
-                self.commands[probe_env_ids, 2] = float(getattr(probe_cfg, "ang_vel_yaw", 0.0))
-                if self.cfg.commands.heading_command:
-                    self.commands[probe_env_ids, 3] = 0.0
-
-        stand_cfg = getattr(self.cfg.commands, "stand_probe", None)
-        if stand_cfg is not None and getattr(stand_cfg, "enabled", False):
-            stand_fraction = max(0.0, min(float(getattr(stand_cfg, "env_fraction", 0.0)), 1.0))
-            start_fraction = terrain_probe_fraction if getattr(stand_cfg, "per_terrain_type", True) else 0.0
-            stand_env_ids = self._get_command_probe_env_ids(
-                env_ids,
-                stand_fraction,
-                start_fraction=start_fraction,
-                per_terrain_type=getattr(stand_cfg, "per_terrain_type", True),
-            )
-            if len(stand_env_ids) > 0:
-                self.commands[stand_env_ids, 0] = float(getattr(stand_cfg, "lin_vel_x", 0.0))
-                self.commands[stand_env_ids, 1] = float(getattr(stand_cfg, "lin_vel_y", 0.0))
-                self.commands[stand_env_ids, 2] = float(getattr(stand_cfg, "ang_vel_yaw", 0.0))
-                if self.cfg.commands.heading_command:
-                    self.commands[stand_env_ids, 3] = 0.0
-
-    def _get_terrain_probe_env_ids(self, env_ids, probe_fraction):
-        return self._get_command_probe_env_ids(env_ids, probe_fraction)
-
-    def _get_command_probe_env_ids(self, env_ids, probe_fraction, start_fraction=0.0, per_terrain_type=True):
-        if probe_fraction <= 0.0:
-            return env_ids[:0]
-
-        start_fraction = max(0.0, min(float(start_fraction), 1.0))
-        end_fraction = max(start_fraction, min(start_fraction + probe_fraction, 1.0))
-        if (
-            per_terrain_type
-            and hasattr(self, "terrain_types")
-            and self.cfg.terrain.curriculum
-            and self.cfg.terrain.num_cols > 0
-        ):
-            envs_per_col = self.num_envs / float(self.cfg.terrain.num_cols)
-            terrain_cols = self.terrain_types[env_ids].float()
-            col_starts = torch.floor(terrain_cols * envs_per_col).long()
-            col_ends = torch.floor((terrain_cols + 1.0) * envs_per_col).long()
-            col_sizes = torch.clamp(col_ends - col_starts, min=1)
-            probe_starts = torch.round(col_sizes.float() * start_fraction).long()
-            probe_limits = torch.round(col_sizes.float() * end_fraction).long()
-            probe_limits = torch.maximum(probe_limits, probe_starts + 1)
-            probe_limits = torch.minimum(probe_limits, col_sizes)
-            col_offsets = env_ids - col_starts
-            return env_ids[(col_offsets >= probe_starts) & (col_offsets < probe_limits)]
-
-        probe_start = int(round(self.num_envs * start_fraction))
-        probe_end = int(round(self.num_envs * end_fraction))
-        if probe_end <= probe_start:
-            return env_ids[:0]
-        return env_ids[(env_ids >= probe_start) & (env_ids < probe_end)]
-
-    def _get_enabled_command_probe_fraction(self, name):
-        cfg = getattr(self.cfg.commands, name, None)
-        if cfg is None or not getattr(cfg, "enabled", False):
-            return 0.0
-        return max(0.0, min(float(getattr(cfg, "env_fraction", 0.0)), 1.0))
-
-    def _post_physics_step_callback(self):
-        super()._post_physics_step_callback()
-        self._apply_stop_probe_commands()
-
-    def _apply_stop_probe_commands(self):
-        stop_cfg = getattr(self.cfg.commands, "stop_probe", None)
-        if stop_cfg is None or not getattr(stop_cfg, "enabled", False):
-            return
-
-        stop_fraction = max(0.0, min(float(getattr(stop_cfg, "env_fraction", 0.0)), 1.0))
-        if stop_fraction <= 0.0:
-            return
-
-        start_fraction = 0.0
-        if getattr(stop_cfg, "per_terrain_type", True):
-            start_fraction += self._get_enabled_command_probe_fraction("terrain_probe")
-            start_fraction += self._get_enabled_command_probe_fraction("stand_probe")
-
-        all_env_ids = torch.arange(self.num_envs, device=self.device)
-        stop_env_ids = self._get_command_probe_env_ids(
-            all_env_ids,
-            stop_fraction,
-            start_fraction=start_fraction,
-            per_terrain_type=getattr(stop_cfg, "per_terrain_type", True),
-        )
-        if len(stop_env_ids) == 0:
-            return
-
-        cycle_time = max(float(getattr(stop_cfg, "cycle_time", 6.0)), self.dt)
-        move_time = max(0.0, min(float(getattr(stop_cfg, "move_time", cycle_time * 0.5)), cycle_time))
-        phase_time = torch.remainder(self.episode_length_buf[stop_env_ids].float() * self.dt, cycle_time)
-        move_mask = phase_time < move_time
-
-        x_cmd = float(getattr(stop_cfg, "lin_vel_x", 0.8))
-        y_cmd = float(getattr(stop_cfg, "lin_vel_y", 0.0))
-        yaw_cmd = float(getattr(stop_cfg, "ang_vel_yaw", 0.0))
-        x_cmd = max(self.command_ranges["lin_vel_x"][0], min(x_cmd, self.command_ranges["lin_vel_x"][1]))
-        y_cmd = max(self.command_ranges["lin_vel_y"][0], min(y_cmd, self.command_ranges["lin_vel_y"][1]))
-        yaw_cmd = max(self.command_ranges["ang_vel_yaw"][0], min(yaw_cmd, self.command_ranges["ang_vel_yaw"][1]))
-
-        zero_cmd = self.commands.new_zeros(move_mask.shape)
-        self.commands[stop_env_ids, 0] = torch.where(move_mask, self.commands.new_full(move_mask.shape, x_cmd), zero_cmd)
-        self.commands[stop_env_ids, 1] = torch.where(move_mask, self.commands.new_full(move_mask.shape, y_cmd), zero_cmd)
-        self.commands[stop_env_ids, 2] = torch.where(move_mask, self.commands.new_full(move_mask.shape, yaw_cmd), zero_cmd)
-        if self.cfg.commands.heading_command:
-            self.commands[stop_env_ids, 3] = 0.0
-
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
 
@@ -766,84 +639,6 @@ class BlackEnv(LeggedRobot):
         """
 
         return torch.sum(torch.square(self.dof_pos[:,:] - self.default_dof_pos[:,:]), dim=1)
-
-    def _reward_stand_torque_balance(self):
-        """
-        静止站立时惩罚左右对称电机力矩幅值不平衡。
-        使用归一化力矩幅值，避免左右关节轴方向不同造成符号误判。
-        """
-        if not hasattr(self, "stand_torque_balance_pair_indices"):
-            name_to_idx = {name: i for i, name in enumerate(self.dof_names)}
-            pair_indices = []
-            for left_name, right_name in self.cfg.rewards.stand_torque_balance.pairs:
-                if left_name in name_to_idx and right_name in name_to_idx:
-                    pair_indices.append((name_to_idx[left_name], name_to_idx[right_name]))
-            self.stand_torque_balance_pair_indices = torch.tensor(
-                pair_indices, dtype=torch.long, device=self.device, requires_grad=False
-            )
-
-        if self.stand_torque_balance_pair_indices.numel() == 0:
-            return torch.zeros(self.num_envs, device=self.device)
-
-        cfg = self.cfg.rewards.stand_torque_balance
-        stand_mask = (
-            (torch.norm(self.commands[:, :2], dim=1) < cfg.command_threshold)
-            & (torch.abs(self.commands[:, 2]) < cfg.yaw_threshold)
-        )
-
-        left_idx = self.stand_torque_balance_pair_indices[:, 0]
-        right_idx = self.stand_torque_balance_pair_indices[:, 1]
-        torque_limits = torch.clamp(self.torque_limits, min=1e-6)
-        left_torque = torch.abs(self.torques[:, left_idx] / torque_limits[left_idx])
-        right_torque = torch.abs(self.torques[:, right_idx] / torque_limits[right_idx])
-        penalty = torch.mean(torch.square(left_torque - right_torque), dim=1)
-        return penalty * stand_mask.float()
-
-    def _reward_stand_feet_force_balance(self):
-        """
-        静止站立时惩罚左右镜像足端支撑力不平衡。
-        默认只比较 z 轴法向支撑力，避免把必要的水平摩擦/抗扰剪切力压掉。
-        """
-        cfg = self.cfg.rewards.stand_feet_force_balance
-
-        if not hasattr(self, "stand_feet_force_balance_pair_indices"):
-            foot_name_to_idx = {}
-            for i, foot_name in enumerate(self.feet_names):
-                foot_name_to_idx[foot_name.split("_")[0]] = i
-
-            pair_indices = []
-            for left_name, right_name in cfg.pairs:
-                if left_name in foot_name_to_idx and right_name in foot_name_to_idx:
-                    pair_indices.append((foot_name_to_idx[left_name], foot_name_to_idx[right_name]))
-            self.stand_feet_force_balance_pair_indices = torch.tensor(
-                pair_indices, dtype=torch.long, device=self.device, requires_grad=False
-            )
-
-        if self.stand_feet_force_balance_pair_indices.numel() == 0:
-            return torch.zeros(self.num_envs, device=self.device)
-
-        stand_mask = (
-            (torch.norm(self.commands[:, :2], dim=1) < cfg.command_threshold)
-            & (torch.abs(self.commands[:, 2]) < cfg.yaw_threshold)
-        )
-
-        left_idx = self.stand_feet_force_balance_pair_indices[:, 0]
-        right_idx = self.stand_feet_force_balance_pair_indices[:, 1]
-        foot_forces = self.contact_forces[:, self.feet_indices, :]
-        if getattr(cfg, "axis", "z") == "xyz":
-            left_load = torch.norm(foot_forces[:, left_idx, :], dim=2)
-            right_load = torch.norm(foot_forces[:, right_idx, :], dim=2)
-        else:
-            foot_forces_z = torch.clamp(foot_forces[:, :, 2], min=0.0)
-            left_load = foot_forces_z[:, left_idx]
-            right_load = foot_forces_z[:, right_idx]
-
-        pair_load = left_load + right_load
-        min_pair_force = float(getattr(cfg, "min_pair_force", getattr(cfg, "min_total_force", 5.0)))
-        valid_contact = pair_load > min_pair_force
-        normalized_error = (left_load - right_load) / torch.clamp(pair_load, min=min_pair_force)
-        penalty = torch.mean(torch.square(normalized_error) * valid_contact.float(), dim=1)
-        return penalty * stand_mask.float()
     
     def _reward_feet_spacing(self):
         # 1. 获取脚部世界坐标 (Global Position)
@@ -990,23 +785,12 @@ class BlackEnv(LeggedRobot):
         terrain_variability = self._get_terrain_variability()
         extra_clearance = self._get_clearance_margin(terrain_variability)
         clearance_cfg = self.cfg.rewards.terrain_adaptive.foot_clearance
-        yaw_limit = max(
-            abs(self.command_ranges["ang_vel_yaw"][0]),
-            abs(self.command_ranges["ang_vel_yaw"][1]),
-            1e-6,
-        )
-        yaw_norm = torch.clamp(torch.abs(self.commands[:, 2]).unsqueeze(1) / yaw_limit, min=0.0, max=1.0)
-        yaw_extra_clearance = torch.clamp(
-            yaw_norm * self.cfg.rewards.yaw_clearance_gain,
-            min=0.0,
-            max=self.cfg.rewards.max_yaw_extra_clearance,
-        )
 
         # 5. 分阶段计算惩罚
         stance_tolerance = 0.02 + clearance_cfg.stance_gain * extra_clearance
         stance_penalty = torch.relu(feet_height - stance_tolerance)
 
-        swing_target = -sin_val * (self.cfg.rewards.clearance_height_target + yaw_extra_clearance)
+        swing_target = -sin_val * self.cfg.rewards.clearance_height_target
         swing_low_penalty = torch.relu(swing_target - feet_height)
         swing_high_penalty = torch.relu(feet_height - (swing_target + extra_clearance))
         swing_penalty = swing_low_penalty + clearance_cfg.swing_high_penalty_weight * swing_high_penalty

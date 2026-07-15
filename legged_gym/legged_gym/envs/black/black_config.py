@@ -4,7 +4,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class BlackCfg(LeggedRobotCfg):
     class init_state(LeggedRobotCfg.init_state):
         # 1. 初始姿态
-        pos = [0.0, 0.0, 0.48] 
+        pos = [0.0, 0.0, 0.45] 
         default_joint_angles = {
             'FL_hip_joint': 0.0,   'FL_thigh_joint': 0.8014,   'FL_calf_joint': -1.527,
             'FR_hip_joint': -0.0,  'FR_thigh_joint': -0.8014,  'FR_calf_joint': 1.527,
@@ -72,13 +72,13 @@ class BlackCfg(LeggedRobotCfg):
         name = "black"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base"]
+        terminate_after_contacts_on = ["base", "thigh"]
         privileged_contacts_on = ["base", "thigh", "calf"]
         self_collisions = 1 # 1=disable
 
     class commands:
         curriculum = True
-        max_curriculum = 3.0
+        max_curriculum = 2.0
         curriculum_threshold = 0.7
         curriculum_ema_alpha = 0.2
         curriculum_required_passes = 2
@@ -86,33 +86,6 @@ class BlackCfg(LeggedRobotCfg):
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = False # if true: compute ang vel command from heading error
-
-        class terrain_probe:
-            enabled = True
-            env_fraction = 0.10
-            per_terrain_type = True
-            lin_vel_x = 0.8
-            lin_vel_y = 0.0
-            ang_vel_yaw = 0.0
-
-        class stand_probe:
-            enabled = True
-            env_fraction = 0.05
-            per_terrain_type = True
-            lin_vel_x = 0.0
-            lin_vel_y = 0.0
-            ang_vel_yaw = 0.0
-
-        class stop_probe:
-            enabled = True
-            env_fraction = 0.05
-            per_terrain_type = True
-            cycle_time = 6.0
-            move_time = 3.0
-            lin_vel_x = 0.8
-            lin_vel_y = 0.0
-            ang_vel_yaw = 0.0
-
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             # lin_vel_y = [0.1, 0.1]   # min max [m/s]
@@ -130,10 +103,7 @@ class BlackCfg(LeggedRobotCfg):
         payload_mass_range = [-2.0, 4.0]
 
         randomize_com_displacement = True
-        # com_displacement_range = [-0.05, 0.05]
-        com_displacement_range_x = [-0.08, 0.08]
-        com_displacement_range_y = [-0.02, 0.02]
-        com_displacement_range_z = [-0.05, 0.05]
+        com_displacement_range = [-0.05, 0.05]
 
         randomize_link_mass = True
         link_mass_range = [0.75, 1.25]
@@ -204,8 +174,8 @@ class BlackCfg(LeggedRobotCfg):
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯下，楼梯上，乱石，梅花桩，沟壑，木板桥，高墙]
-        # 稳定性/抗扰动基线：移除台阶、高墙、沟壑和桥，仅保留平地、斜坡与乱石。
-        terrain_proportions = [0.2, 0.3, 0.3, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0]
+        # 当前混合地形分支中剥离断桥，避免与下楼梯在盲策略上产生冲突。
+        terrain_proportions = [0.1, 0.1, 0.1, 0.25, 0.25, 0.2, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
   
@@ -229,36 +199,32 @@ class BlackCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         cycle_time = 0.8
-        clearance_height_target = 0.1
-        yaw_clearance_gain = 0.05
-        max_yaw_extra_clearance = 0.05
-        soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
-        soft_dof_vel_limit = 1.0
-        soft_torque_limit = 1.0
+        clearance_height_target = 0.08
+        soft_dof_pos_limit = 0.95 # percentage of urdf limits, values above this limit are penalized
+        soft_dof_vel_limit = 0.85
+        soft_torque_limit = 0.80
         base_height_target = 0.43
-        tracking_sigma = 0.25
         only_positive_rewards = False
         class terrain_adaptive:
-            # Go1-style baseline first: disable terrain-adaptive reward reshaping.
-            enabled = False
+            enabled = True
             terrain_variability_clip = 0.30
 
             class orientation:
-                enabled = False
+                enabled = True
                 mode = "decay"
                 sigma = 0.009
                 min_scale = 0.15
                 max_scale = 1.0
 
             class smoothness:
-                enabled = False
+                enabled = True
                 mode = "decay"
                 sigma = 0.2
                 min_scale = 0.9
                 max_scale = 1.0
 
             class action_rate:
-                enabled = False
+                enabled = True
                 mode = "decay"
                 sigma = 0.01
                 min_scale = 0.20
@@ -279,7 +245,7 @@ class BlackCfg(LeggedRobotCfg):
                 max_scale = 1.5
 
             class foot_clearance:
-                enabled = False  # 是否启用地形自适应抬脚
+                enabled = True  # 是否启用地形自适应抬脚
                 mode = "margin"  # 用地形相关的抬脚裕量
                 std_gain = 2.0  # 地形起伏到额外抬脚高度的增益
                 max_extra_clearance = 0.15  # 额外抬脚高度上限[m]
@@ -289,12 +255,12 @@ class BlackCfg(LeggedRobotCfg):
         class raibert:
             nominal_front_x = 0.21
             nominal_rear_x = -0.21
-            nominal_y = 0.17
+            nominal_y = 0.155
             max_linear_offset_x = 0.16
-            max_linear_offset_y = 0.08
+            max_linear_offset_y = 0.06
             vel_error_gain = 0.3
             yaw_gain = 1.0
-            max_yaw_offset = 0.16
+            max_yaw_offset = 0.10
             tracking_sigma = 0.06
             late_swing_start_x = 0.35
             late_swing_start_latyaw = 0.0
@@ -302,79 +268,36 @@ class BlackCfg(LeggedRobotCfg):
             approach_bonus = 0.25
             max_approach_speed = 0.4
 
-        class stand_torque_balance:
-            command_threshold = 0.10
-            yaw_threshold = 0.10
-            pairs = [
-                ("FL_hip_joint", "FR_hip_joint"),
-                ("RL_hip_joint", "RR_hip_joint"),
-                ("FL_thigh_joint", "FR_thigh_joint"),
-                ("RL_thigh_joint", "RR_thigh_joint"),
-                ("FL_calf_joint", "FR_calf_joint"),
-                ("RL_calf_joint", "RR_calf_joint"),
-            ]
-
-        class stand_feet_force_balance:
-            command_threshold = 0.10
-            yaw_threshold = 0.10
-            axis = "z"
-            min_pair_force = 5.0
-            pairs = [
-                ("FL", "FR"),
-                ("RL", "RR"),
-            ]
-
         class scales:
-            # Command tracking.
-            # 指令跟踪奖励。
+            termination = -100.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.5
-
-            # Base posture and body stability.
-            # 机身姿态、高度与整体稳定性约束。
-            hip_pos = -0.6
-            lin_vel_z = -2.0
+            lin_vel_z = -1.5
             ang_vel_xy = -0.05
-            orientation = -0.8
-            base_height = -1.0
-            foot_clearance = -2.0
-
-            # Gait shaping.
-            feet_spacing = -0.08
-            raibert = 1.0
-
-            # Contact handling.
-            # 轻量接触惩罚，腿部擦碰不终止但给稳定步态反馈。
-            collision = -0.05
-
-            # Stand Config.
-            # 静止站立。
-            stand_still = -0.8
-            stand_torque_balance = -1.0
-            stand_feet_force_balance = -0.5
-
-            # Action and actuator regularization.
-            # 动作平滑、功率与关节加速度正则项。
-            action_rate = -0.05
+            orientation = -3.0
+            dof_acc = -0.0
+            joint_power = -1e-6
+            base_height = -3.0
+            foot_clearance = -10.0
+            action_rate = -0.3
             smoothness = -0.01
-            dof_acc = -2.5e-7
-            joint_power = -2e-5
-            foot_impact_vel = -0.8
-
-            # Disabled legacy or experimental terms.
-            # 当前关闭的历史项、严苛 sim2real shaping 或预留实验项。
-            termination = -0.0
-            feet_stumble = -0.0
-            feet_air_time = 0.0
-            torques = -0.0
-            dof_vel = -0.0
-            dof_pos_limits = -0.0
+            feet_air_time = 1.0
+            collision = -0.05
+            feet_stumble = -1.0
+            stand_still = -1.0
+            torques = -1e-7
+            dof_vel = -1e-7
+            dof_pos_limits = -10.0
             dof_vel_limits = -0.0
-            torque_limits = -0.0
-            trot = 0.0
-            all_joint_pos = 0.0
-            foot_slip = 0.0
-            progress = 0.0
+            torque_limits = -1e-5
+            trot = 1.0
+            hip_pos = -0.5 
+            all_joint_pos = -0.001
+            foot_slip = -0.3
+            # feet_spacing = -0.1
+            foot_impact_vel = -10.0
+            progress = 1.0
+            raibert = 1.5
 
 class BlackCfgPPO(LeggedRobotCfgPPO):
     class policy:
@@ -392,7 +315,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
         value_loss_coef = 1.0
         use_clipped_value_loss = True
         clip_param = 0.2
-        entropy_coef = 0.005
+        entropy_coef = 0.01
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         learning_rate = 1.e-4 #5.e-4
@@ -432,8 +355,7 @@ class BlackCfgPPO(LeggedRobotCfgPPO):
     
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        save_interval = 50
-        num_steps_per_env = 64
+        num_steps_per_env = 100
         experiment_name = 'rough_black_dog'
         max_iterations=1000
          
