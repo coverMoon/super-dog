@@ -1,4 +1,4 @@
-# HIMLoco for Black Quadruped and Black-Arm
+# HIMLoco for Black Quadruped and BlackW
 
 本仓库基于 [HIMLoco](./projects/himloco/README.md)、[legged_gym](./legged_gym/README.md) 和 `rsl_rl` 做了面向 `black` 四足机器人任务的工程化改造，当前重点支持以下三类训练场景：
 
@@ -63,13 +63,23 @@
 
 ## 环境准备
 
-推荐优先使用仓库自带的 Docker 环境，当前 `Dockerfile` 固定了：
+推荐优先使用仓库自带的 Docker 环境。Docker 和 Conda 安装方式都建议使用以下核心软件栈：
 
-- Ubuntu 20.04
-- Python 3.8
-- CUDA 11.7
+- Ubuntu 20.04（Docker 基础镜像；宿主机版本可以不同）
+- Python 3.8.20
 - PyTorch 1.13.1 + cu117
+- torchvision 0.14.1 + cu117
+- torchaudio 0.13.1 + cu117
+- NumPy 1.23.5
+- Matplotlib 3.7.5
+- TensorBoard 2.14.0
 - 本地安装 `isaacgym`、`rsl_rl`、`legged_gym`
+
+这里的 CUDA 版本指 PyTorch 自带的 CUDA 11.7 runtime。系统安装的 `nvcc` 版本可以不同，检查训练运行时版本应使用：
+
+```bash
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+```
 
 ### 方式一：Docker
 
@@ -78,16 +88,43 @@ docker build -t himloco:train .
 ./run_train_docker.sh himloco:train
 ```
 
-如果本机配置了 `DISPLAY`，脚本会自动挂载 X11 以支持可视化。
+如果宿主机配置了 `DISPLAY`，脚本会自动挂载 X11 以支持可视化。
 
-### 方式二：手动安装
+### 方式二：Conda
 
-请尽量与 Docker 中的版本保持一致，然后在仓库根目录执行：
+在仓库根目录执行以下命令创建 `himloco` 环境并安装依赖：
 
 ```bash
-pip install -e isaacgym/python
-pip install -e rsl_rl
-pip install -e legged_gym
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda create -n himloco -c conda-forge python=3.8.20 pip=24.3.1 -y
+conda activate himloco
+
+python -m pip install \
+  --extra-index-url https://download.pytorch.org/whl/cu117 \
+  torch==1.13.1+cu117 \
+  torchvision==0.14.1+cu117 \
+  torchaudio==0.13.1+cu117 \
+  numpy==1.23.5 \
+  scipy==1.10.1 \
+  matplotlib==3.7.5 \
+  tensorboard==2.14.0 \
+  protobuf==3.20.3 \
+  PyYAML==6.0.3
+
+python -m pip install -e isaacgym/python
+python -m pip install -e rsl_rl
+python -m pip install -e legged_gym
+
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+`LD_LIBRARY_PATH` 中需要优先包含当前环境的 `lib/`，否则 Isaac Gym 的 `gym_38.so` 可能无法找到 `libpython3.8.so.1.0`。如需长期使用，可以将这条设置写入该 Conda 环境的激活钩子。
+
+安装完成后执行基础检查：
+
+```bash
+python -m pip check
+python -c "import isaacgym, torch, legged_gym, rsl_rl; print('imports ok')"
 ```
 
 ## 训练与评估
@@ -96,16 +133,14 @@ pip install -e legged_gym
 
 ```bash
 python legged_gym/legged_gym/scripts/train.py --task=black
-python legged_gym/legged_gym/scripts/train.py --task=black_bridge
-python legged_gym/legged_gym/scripts/train.py --task=black_arm
+python legged_gym/legged_gym/scripts/train.py --task=blackW
 ```
 
 策略回放：
 
 ```bash
 python legged_gym/legged_gym/scripts/play.py --task=black
-python legged_gym/legged_gym/scripts/play.py --task=black_bridge
-python legged_gym/legged_gym/scripts/play.py --task=black_arm
+python legged_gym/legged_gym/scripts/play.py --task=blackW
 ```
 
 日志默认保存在：

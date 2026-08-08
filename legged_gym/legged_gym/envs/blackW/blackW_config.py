@@ -125,7 +125,7 @@ class BlackWCfg(BlackCfg):
         num_rows = 10
         num_cols = 20
         # 地形类型：[平地，光滑斜坡，崎岖斜坡，楼梯上，楼梯下，乱石，梅花桩，沟壑，木板桥，高墙]
-        terrain_proportions = [0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7]
+        terrain_proportions = [0.1, 0.1, 0.1, 0.2, 0.2, 0.0, 0.0, 0.0, 0.0, 0.3]
         high_wall_fill_full_block = True
         high_wall_spawn_clearance = 0.8
         slope_treshold = 0.75
