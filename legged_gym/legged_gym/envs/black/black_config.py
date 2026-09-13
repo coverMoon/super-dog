@@ -36,7 +36,7 @@ class BlackCfg(LeggedRobotCfg):
         # 阻尼 (D Gain)
         damping = {
             'FL_hip_joint': 1.2, 'RL_hip_joint': 1.2, 'FR_hip_joint': 1.2, 'RR_hip_joint': 1.2,
-            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.0, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
+            'FL_thigh_joint': 1.2, 'RL_thigh_joint': 1.2, 'FR_thigh_joint': 1.2, 'RR_thigh_joint': 1.2,
             'FL_calf_joint': 1.2, 'RL_calf_joint': 1.2, 'FR_calf_joint': 1.2, 'RR_calf_joint': 1.2
         }
 
